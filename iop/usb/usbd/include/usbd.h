@@ -39,7 +39,7 @@ typedef struct
     u8 wHubCharacteristicsHb;
     u8 bPwrOn2PwrGood;
     u8 bHubContrCurrent;
-    u8 deviceRemovable[8]; // arbitrary number, depends on number of ports
+    u8 deviceRemovable[32]; // arbitrary number, depends on number of ports
 } UsbHubDescriptor;
 
 
@@ -122,6 +122,23 @@ typedef struct
     u8 bDescriptorType;
     u16 wData[1];
 } UsbStringDescriptor;
+
+typedef struct _usbHidDescriptorItem
+{
+    u8 bDescriptorType;
+    u8 wDescriptorLengthLb;
+    u8 wDescriptorLengthHb;
+} UsbHidDescriptorItem;
+
+typedef struct _usbHidDescriptor
+{
+    u8 bLength;
+    u8 bDescriptorType;
+    u16 bcdHID;
+    u8 bCountryCode;
+    u8 bNumDescriptors;
+    UsbHidDescriptorItem items[];
+} UsbHidDescriptor;
 
 typedef struct
 {
@@ -317,7 +334,7 @@ extern int sceUsbdMultiIsochronousTransfer(int pipeId, sceUsbdMultiIsochronousRe
 #define UsbGetReportDescriptor          sceUsbdGetReportDescriptor
 #define UsbMultiIsochronousTransfer     sceUsbdMultiIsochronousTransfer
 
-#define usbd_IMPORTS_start DECLARE_IMPORT_TABLE(usbd, 1, 1)
+#define usbd_IMPORTS_start DECLARE_IMPORT_TABLE(usbd, 1, 2)
 #define usbd_IMPORTS_end   END_IMPORT_TABLE
 
 #define I_sceUsbdRegisterLdd              DECLARE_IMPORT(4, sceUsbdRegisterLdd)
