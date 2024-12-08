@@ -39,7 +39,7 @@ typedef struct
     u8 wHubCharacteristicsHb;
     u8 bPwrOn2PwrGood;
     u8 bHubContrCurrent;
-    u8 deviceRemovable[8]; // arbitrary number, depends on number of ports
+    u8 deviceRemovable[32]; // arbitrary number, depends on number of ports
 } UsbHubDescriptor;
 
 
@@ -122,6 +122,23 @@ typedef struct
     u8 bDescriptorType;
     u16 wData[1];
 } UsbStringDescriptor;
+
+typedef struct _usbHidDescriptorItem
+{
+    u8 bDescriptorType;
+    u8 wDescriptorLengthLb;
+    u8 wDescriptorLengthHb;
+} UsbHidDescriptorItem;
+
+typedef struct _usbHidDescriptor
+{
+    u8 bLength;
+    u8 bDescriptorType;
+    u16 bcdHID;
+    u8 bCountryCode;
+    u8 bNumDescriptors;
+    UsbHidDescriptorItem items[];
+} UsbHidDescriptor;
 
 typedef struct
 {
@@ -276,24 +293,24 @@ typedef void (*sceUsbdMultiIsochronousDoneCallback)(int result, sceUsbdMultiIsoc
 /** Unknown Error (USBD.IRX doesn't know what went wrong) */
 #define USB_RC_UNKNOWN   0x132
 
-int sceUsbdRegisterLdd(sceUsbdLddOps *driver);
-int sceUsbdUnregisterLdd(sceUsbdLddOps *driver);
-void *sceUsbdScanStaticDescriptor(int devId, void *data, u8 type);
-int sceUsbdGetDeviceLocation(int devId, u8 *path);
-int sceUsbdSetPrivateData(int devId, void *data);
-void *sceUsbdGetPrivateData(int devId);
-int sceUsbdOpenPipe(int devId, UsbEndpointDescriptor *desc);
-int sceUsbdOpenPipeAligned(int devId, UsbEndpointDescriptor *desc);
-int sceUsbdClosePipe(int id);
-int sceUsbdTransferPipe(int id, void *data, u32 len, void *option, sceUsbdDoneCallback callback, void *cbArg);
+extern int sceUsbdRegisterLdd(sceUsbdLddOps *driver);
+extern int sceUsbdUnregisterLdd(sceUsbdLddOps *driver);
+extern void *sceUsbdScanStaticDescriptor(int devId, void *data, u8 type);
+extern int sceUsbdGetDeviceLocation(int devId, u8 *path);
+extern int sceUsbdSetPrivateData(int devId, void *data);
+extern void *sceUsbdGetPrivateData(int devId);
+extern int sceUsbdOpenPipe(int devId, UsbEndpointDescriptor *desc);
+extern int sceUsbdOpenPipeAligned(int devId, UsbEndpointDescriptor *desc);
+extern int sceUsbdClosePipe(int id);
+extern int sceUsbdTransferPipe(int id, void *data, u32 len, void *option, sceUsbdDoneCallback callback, void *cbArg);
 
-int sceUsbdRegisterAutoloader(sceUsbdLddOps *drv); // Arbitrarily named
-int sceUsbdUnregisterAutoloader(void);             // Arbitrarily named
-int sceUsbdChangeThreadPriority(int prio1, int prio2);
+extern int sceUsbdRegisterAutoloader(sceUsbdLddOps *drv); // Arbitrarily named
+extern int sceUsbdUnregisterAutoloader(void);             // Arbitrarily named
+extern int sceUsbdChangeThreadPriority(int prio1, int prio2);
 
-// these aren't implemented:
-int sceUsbdGetReportDescriptor(int devId, int cfgNum, int ifNum, void **desc, u32 *len);
-int sceUsbdMultiIsochronousTransfer(int pipeId, sceUsbdMultiIsochronousRequest *request, sceUsbdMultiIsochronousDoneCallback callback, void *cbArg);
+// These have been added in 1.2 export version
+extern int sceUsbdGetReportDescriptor(int devId, int cfgNum, int ifNum, void **desc, u32 *len);
+extern int sceUsbdMultiIsochronousTransfer(int pipeId, sceUsbdMultiIsochronousRequest *request, sceUsbdMultiIsochronousDoneCallback callback, void *cbArg);
 
 // For backwards compatibility:
 #define UsbCallbackProc                 sceUsbdDoneCallback
@@ -317,7 +334,7 @@ int sceUsbdMultiIsochronousTransfer(int pipeId, sceUsbdMultiIsochronousRequest *
 #define UsbGetReportDescriptor          sceUsbdGetReportDescriptor
 #define UsbMultiIsochronousTransfer     sceUsbdMultiIsochronousTransfer
 
-#define usbd_IMPORTS_start DECLARE_IMPORT_TABLE(usbd, 1, 1)
+#define usbd_IMPORTS_start DECLARE_IMPORT_TABLE(usbd, 1, 2)
 #define usbd_IMPORTS_end   END_IMPORT_TABLE
 
 #define I_sceUsbdRegisterLdd              DECLARE_IMPORT(4, sceUsbdRegisterLdd)
