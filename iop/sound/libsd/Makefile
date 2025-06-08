@@ -23,6 +23,9 @@ IOP_INCS += \
 	-I$(PS2SDKSRC)/iop/system/sifman/include \
 	-I$(PS2SDKSRC)/iop/system/stdio/include \
 	-I$(PS2SDKSRC)/iop/system/sysclib/include
+<<<<<<< HEAD
+>>>>>>> parent of 76fc7b9b (Merge pull request #718 from uyjulian/libsd_feature_update)
+=======
 >>>>>>> parent of 76fc7b9b (Merge pull request #718 from uyjulian/libsd_feature_update)
 
 IOP_OBJS = freesd.o batch.o block.o effect.o voice.o exports.o imports.o
