@@ -25,7 +25,7 @@ else
 fi
 
 ## Download libsmb2
-FATFS_REPO_URL="https://github.com/fjtrujy/FatFs.git"
+FATFS_REPO_URL="https://github.com/362053534/FatFs-PS2OPL.git"
 FATFS_REPO_FOLDER="common/external_deps/fatfs"
 FATFS_BRANCH_NAME="iop-r0.15"
 if test ! -d "$FATFS_REPO_FOLDER"; then
