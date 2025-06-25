@@ -13,7 +13,8 @@ jobs:
       matrix:
         debug: [all, debug]
     runs-on: ubuntu-latest
-    container: 362053534/ps2toolchain:latest
+    container:
+      image: ghcr.io/362053534/ps2toolchain:latest
     steps:
       - uses: actions/checkout@v4
 
