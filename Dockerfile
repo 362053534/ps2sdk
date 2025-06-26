@@ -1,4 +1,4 @@
-FROM 362053534/ps2dev:latest
+FROM ps2dev/ps2dev:latest
 
 COPY . /src
 
