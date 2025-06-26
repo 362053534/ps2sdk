@@ -1,6 +1,4 @@
-ARG BASE_DOCKER_IMAGE
-
-FROM $BASE_DOCKER_IMAGE
+FROM ps2dev/ps2toolchain:latest
 
 COPY . /src
 
