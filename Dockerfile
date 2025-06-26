@@ -1,4 +1,4 @@
-FROM 362053534/ps2toolchain:latest
+FROM 362053534/ps2dev:latest
 
 COPY . /src
 
