@@ -3,7 +3,7 @@ name: CI-Docker
 on:
   push:
     branches:
-      - USB-compatible-normal
+      - master
     tags:
       - v*
   repository_dispatch:
