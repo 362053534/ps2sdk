@@ -8,6 +8,7 @@ on:
       - v*
   repository_dispatch:
     types: [run_build]
+  workflow_dispatch: {}
 
 jobs:
   build:
@@ -59,28 +60,3 @@ jobs:
       with:
         push: true
         tags: ${{ env.DOCKER_TAG_LIST }}
-        build-args: |
-          BASE_DOCKER_IMAGE=ghcr.io/${{ github.repository_owner }}/ps2toolchain:${{ env.DOCKER_TAG }}
-
-    - name: Send Compile action
-      run: |
-        export DISPATCH_ACTION="$(printf '%s\n' run_build)"
-        printf '%s\n' "NEW_DISPATCH_ACTION=$DISPATCH_ACTION" >> $GITHUB_ENV
-
-    - name: Repository Dispatch to ps2sdk-ports
-      uses: peter-evans/repository-dispatch@v3
-      if: env.DISPATCH_TOKEN != null
-      with:
-        repository: ${{ github.repository_owner }}/ps2sdk-ports
-        token: ${{ secrets.DISPATCH_TOKEN }}
-        event-type: ${{ env.NEW_DISPATCH_ACTION }}
-        client-payload: '{"ref": "${{ github.ref }}"}'
-
-    - name: Repository Dispatch to ps2-packer
-      uses: peter-evans/repository-dispatch@v3
-      if: env.DISPATCH_TOKEN != null
-      with:
-        repository: ${{ github.repository_owner }}/ps2-packer
-        token: ${{ secrets.DISPATCH_TOKEN }}
-        event-type: ${{ env.NEW_DISPATCH_ACTION }}
-        client-payload: '{"ref": "${{ github.ref }}"}'
