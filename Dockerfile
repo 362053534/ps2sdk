@@ -1,4 +1,4 @@
-FROM ghcr.io/362053534/ps2toolchain:latest
+FROM ghcr.io/ps2dev/ps2toolchain:latest
 
 COPY . /src
 
