@@ -294,14 +294,14 @@ static int utf16ToAscii(char *out, const char *in, int inbytes)
             break;
 
         if (wchar >= 0xD800 && wchar < 0xDC00) { // Skip surrogate. Replace unsupported character with '?'.
-            *pOut = '?';
+            *pOut = '!';
 
             pIn += 4;
             bytesProcessed += 4;
             pOut++;
         } else {
             // Write decoded character. Replace unsupported characters with '?'.
-            *pOut = (wchar > 128) ? '?' : (char)wchar;
+            *pOut = (wchar > 128) ? '!' : (char)wchar;
 
             pIn += 2;
             bytesProcessed += 2;
