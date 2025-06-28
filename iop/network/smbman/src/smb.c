@@ -281,38 +281,41 @@ static int asciiToUtf16(char *out, const char *in)
     return len;
 }
 
-static int utf16ToAscii(char *out, const char *in, int inbytes)
+static int utf16ToUtf8(char *out, const char *in, int inbytes)
 {
-    int len, bytesProcessed;
-    const char *pIn;
-    char *pOut;
-    u16 wchar;
+    int len = 0, bytesProcessed = 0;
+    const unsigned char *pIn = (const unsigned char *)in;
+    char *pOut               = out;
+    unsigned int wchar;
 
-    for (pIn = in, pOut = out, len = 0, bytesProcessed = 0; (inbytes == 0) || (bytesProcessed < inbytes); len++) {
-        wchar = pIn[0] | ((u16)pIn[1] << 8);
-        if (wchar == '\0')
+    while ((inbytes == 0) || (bytesProcessed < inbytes)) {
+        wchar = pIn[0] | (pIn[1] << 8);
+
+        if (wchar == 0)
             break;
 
-        if (wchar >= 0xD800 && wchar < 0xDC00) { // Skip surrogate. Replace unsupported character with '?'.
-            *pOut = '!';
+        if (wchar >= 0xD800 && wchar < 0xDC00) // surrogate pair（这里不完全处理）
+            wchar = 0xfffd;                    // 替换为replacement char
 
-            pIn += 4;
-            bytesProcessed += 4;
-            pOut++;
+        // 输出为UTF-8
+        if (wchar < 0x80)
+            *pOut++ = (char)wchar;
+        else if (wchar < 0x800) {
+            *pOut++ = 0xC0 | (wchar >> 6);
+            *pOut++ = 0x80 | (wchar & 0x3F);
         } else {
-            // Write decoded character. Replace unsupported characters with '?'.
-            *pOut = (wchar > 128) ? '!' : (char)wchar;
-
-            pIn += 2;
-            bytesProcessed += 2;
-            pOut++;
+            *pOut++ = 0xE0 | (wchar >> 12);
+            *pOut++ = 0x80 | ((wchar >> 6) & 0x3F);
+            *pOut++ = 0x80 | (wchar & 0x3F);
         }
+
+        pIn += 2;
+        bytesProcessed += 2;
+        len++;
     }
 
-    pOut[0] = '\0'; // NULL terminate.
-    len++;
-
-    return len;
+    *pOut = 0;
+    return (pOut - out);
 }
 
 static int setStringField(char *out, const char *in)
