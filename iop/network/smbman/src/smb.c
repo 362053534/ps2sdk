@@ -283,7 +283,7 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
 static int asciiToUtf16(char *out, const char *in)
 {
     int len = strlen(in);
-    memcpy(out, in, len + 1); // 拷贝原始数据（带\0结尾）
+    memcpy(out, in, len + 1);
     return len;
 }
 
