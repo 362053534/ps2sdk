@@ -318,6 +318,11 @@ static int utf16ToUtf8(char *out, const char *in, int inbytes)
     return (pOut - out);
 }
 
+static int utf16ToAscii(char *out, const char *in, int inbytes)
+{
+    utf16ToUtf8(out, in, inbytes);
+}
+
 static int setStringField(char *out, const char *in)
 {
     int len;
