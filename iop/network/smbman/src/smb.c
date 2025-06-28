@@ -263,64 +263,77 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
 
 //-------------------------------------------------------------------------
 // These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
+//static int asciiToUtf16(char *out, const char *in)
+//{
+//    int len;
+//    const char *pIn;
+//    char *pOut;
+//
+//    for (pIn = in, pOut = out, len = 0; *pIn != '\0'; pIn++, pOut += 2, len += 2) {
+//        pOut[0] = *pIn;
+//        pOut[1] = '\0';
+//    }
+//
+//    pOut[0] = '\0'; // NULL terminate.
+//    pOut[1] = '\0';
+//    len += 2;
+//
+//    return len;
+//}
 static int asciiToUtf16(char *out, const char *in)
 {
-    int len;
-    const char *pIn;
-    char *pOut;
-
-    for (pIn = in, pOut = out, len = 0; *pIn != '\0'; pIn++, pOut += 2, len += 2) {
-        pOut[0] = *pIn;
-        pOut[1] = '\0';
-    }
-
-    pOut[0] = '\0'; // NULL terminate.
-    pOut[1] = '\0';
-    len += 2;
-
+    int len = strlen(in);
+    memcpy(out, in, len + 1); // 拷贝原始数据（带\0结尾）
     return len;
 }
 
-static int utf16ToUtf8(char *out, const char *in, int inbytes)
-{
-    int len = 0, bytesProcessed = 0;
-    const unsigned char *pIn = (const unsigned char *)in;
-    char *pOut               = out;
-    unsigned int wchar;
+//static int utf16ToUtf8(char *out, const char *in, int inbytes)
+//{
+//    int len = 0, bytesProcessed = 0;
+//    const unsigned char *pIn = (const unsigned char *)in;
+//    char *pOut               = out;
+//    unsigned int wchar;
+//
+//    while ((inbytes == 0) || (bytesProcessed < inbytes)) {
+//        wchar = pIn[0] | (pIn[1] << 8);
+//
+//        if (wchar == 0)
+//            break;
+//
+//        if (wchar >= 0xD800 && wchar < 0xDC00) // surrogate pair（这里不完全处理）
+//            wchar = 0xfffd;                    // 替换为replacement char
+//
+//        // 输出为UTF-8
+//        if (wchar < 0x80)
+//            *pOut++ = (char)wchar;
+//        else if (wchar < 0x800) {
+//            *pOut++ = 0xC0 | (wchar >> 6);
+//            *pOut++ = 0x80 | (wchar & 0x3F);
+//        } else {
+//            *pOut++ = 0xE0 | (wchar >> 12);
+//            *pOut++ = 0x80 | ((wchar >> 6) & 0x3F);
+//            *pOut++ = 0x80 | (wchar & 0x3F);
+//        }
+//
+//        pIn += 2;
+//        bytesProcessed += 2;
+//        len++;
+//    }
+//
+//    *pOut = 0;
+//    return (pOut - out);
+//}
 
-    while ((inbytes == 0) || (bytesProcessed < inbytes)) {
-        wchar = pIn[0] | (pIn[1] << 8);
-
-        if (wchar == 0)
-            break;
-
-        if (wchar >= 0xD800 && wchar < 0xDC00) // surrogate pair（这里不完全处理）
-            wchar = 0xfffd;                    // 替换为replacement char
-
-        // 输出为UTF-8
-        if (wchar < 0x80)
-            *pOut++ = (char)wchar;
-        else if (wchar < 0x800) {
-            *pOut++ = 0xC0 | (wchar >> 6);
-            *pOut++ = 0x80 | (wchar & 0x3F);
-        } else {
-            *pOut++ = 0xE0 | (wchar >> 12);
-            *pOut++ = 0x80 | ((wchar >> 6) & 0x3F);
-            *pOut++ = 0x80 | (wchar & 0x3F);
-        }
-
-        pIn += 2;
-        bytesProcessed += 2;
-        len++;
-    }
-
-    *pOut = 0;
-    return (pOut - out);
-}
+//static int utf16ToAscii(char *out, const char *in, int inbytes)
+//{
+//    return utf16ToUtf8(out, in, inbytes);
+//}
 
 static int utf16ToAscii(char *out, const char *in, int inbytes)
 {
-    return utf16ToUtf8(out, in, inbytes);
+    memcpy(out, in, inbytes);
+    out[inbytes] = '\0';
+    return inbytes;
 }
 
 static int setStringField(char *out, const char *in)
