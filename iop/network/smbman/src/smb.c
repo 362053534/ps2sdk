@@ -16,7 +16,6 @@
 #include "auth.h"
 #include "poll.h"
 #include "debug.h"
-#include "ff.h" // fatfs头文件
 
 // Round up the erasure amount, so that memset can erase memory word-by-word.
 #define ZERO_PKT_ALIGNED(hdr, hdrSize) memset((hdr), 0, ((hdrSize) + 3) & ~3)
@@ -282,32 +281,46 @@ static int asciiToUtf16(char *out, const char *in)
     return len;
 }
 
-int utf16ToGbk(char *out, const char *in, int inbytes)
+static int utf16ToUtf8(char *out, const char *in, int inbytes)
 {
-    int len = 0;
-    int i   = 0;
-    while (i + 1 < inbytes) { // 每两个字节为一个 UTF16字符
-        unsigned short w = ((unsigned char)in[i]) | (((unsigned char)in[i + 1]) << 8);
-        if (w == 0)
-            break;                     // 结尾
-        UINT gbkch = ff_uni2oem(w, 0); // fatfs 转换
-        if (gbkch < 0x100) {
-            *out++ = (char)gbkch;
-            len += 1;
+    int len = 0, bytesProcessed = 0;
+    const unsigned char *pIn = (const unsigned char *)in;
+    char *pOut               = out;
+    unsigned int wchar;
+
+    while ((inbytes == 0) || (bytesProcessed < inbytes)) {
+        wchar = pIn[0] | (pIn[1] << 8);
+
+        if (wchar == 0)
+            break;
+
+        if (wchar >= 0xD800 && wchar < 0xDC00) // surrogate pair（这里不完全处理）
+            wchar = 0xfffd;                    // 替换为replacement char
+
+        // 输出为UTF-8
+        if (wchar < 0x80)
+            *pOut++ = (char)wchar;
+        else if (wchar < 0x800) {
+            *pOut++ = 0xC0 | (wchar >> 6);
+            *pOut++ = 0x80 | (wchar & 0x3F);
         } else {
-            *out++ = (gbkch >> 8) & 0xFF;
-            *out++ = gbkch & 0xFF;
-            len += 2;
+            *pOut++ = 0xE0 | (wchar >> 12);
+            *pOut++ = 0x80 | ((wchar >> 6) & 0x3F);
+            *pOut++ = 0x80 | (wchar & 0x3F);
         }
-        i += 2;
+
+        pIn += 2;
+        bytesProcessed += 2;
+        len++;
     }
-    *out = 0;
-    return len;
+
+    *pOut = 0;
+    return (pOut - out);
 }
 
 static int utf16ToAscii(char *out, const char *in, int inbytes)
 {
-    return utf16ToGbk(out, in, inbytes);
+    return utf16ToUtf8(out, in, inbytes);
 }
 
 static int setStringField(char *out, const char *in)
