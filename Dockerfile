@@ -19,7 +19,7 @@ RUN (cd $PS2DEV/ee/mips64r5900el-ps2-elf/lib && ln -sf ../../../ps2sdk/ee/lib/li
 RUN (cd $PS2DEV/ee/mips64r5900el-ps2-elf/lib && ln -sf ../../../ps2sdk/ee/lib/libcdvd.a libcdvd.a && cd -)
 
 # Second stage of Dockerfile
-FROM alpine:3.20.3
+FROM alpine:3.20.6
 
 ENV PS2DEV=/usr/local/ps2dev
 ENV PS2SDK=$PS2DEV/ps2sdk
