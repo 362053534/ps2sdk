@@ -282,22 +282,25 @@ static int asciiToUtf16(char *out, const char *in)
     return len;
 }
 
+// in: UTF-16LE字节序（2字节一组），out: GBK字节流
 int utf16ToGbk(char *out, const char *in, int inbytes)
 {
-    int len = 0;
-    int i   = 0;
-    while (i + 1 < inbytes) { // 每两个字节为一个 UTF16字符
-        unsigned short w = ((unsigned char)in[i]) | (((unsigned char)in[i + 1]) << 8);
-        if (w == 0)
-            break;                     // 结尾
-        UINT gbkch = ff_uni2oem(w, 0); // fatfs 转换
-        if (gbkch < 0x100) {
-            *out++ = (char)gbkch;
-            len += 1;
-        } else {
-            *out++ = (gbkch >> 8) & 0xFF;
-            *out++ = gbkch & 0xFF;
+    int len = 0, i = 0;
+    while (i + 1 < inbytes) {
+        unsigned short w = ((unsigned char)in[i]) | (((unsigned char)in[i + 1]) << 8); // UTF-16LE->unicode
+        if (!w)
+            break;
+        WCHAR gbk = ff_uni2oem((DWORD)w, 936); // Unicode->GBK
+        if (gbk < 0x80) {
+            *out++ = (char)gbk;
+            len++;
+        } else if ((gbk & 0xFF00) && (gbk & 0xFF)) {
+            *out++ = ((gbk >> 8) & 0xFF);
+            *out++ = (gbk & 0xFF);
             len += 2;
+        } else {
+            *out++ = '?';
+            len++;
         }
         i += 2;
     }
