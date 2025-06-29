@@ -292,6 +292,10 @@ static int utf16ToAscii(char *out, const char *in, int inbytes)
         wchar = pIn[0] | ((u16)pIn[1] << 8);
         if (wchar == '\0')
             break;
+
+        // Write decoded character. Replace unsupported characters with '?'.
+        *pOut = (char)wchar;
+
         pIn += 2;
         bytesProcessed += 2;
         pOut++;
