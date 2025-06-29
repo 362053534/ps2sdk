@@ -262,62 +262,85 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
 }
 
 //-------------------------------------------------------------------------
-//// These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
-//static int asciiToUtf16(char *out, const char *in)
-//{
-//    iconv_t cd = iconv_open("UTF-16LE", "UTF-8");
-//    if (cd == (iconv_t)-1)
-//        return -1;
-//
-//    size_t inlen    = strlen(in);
-//    size_t outlen   = (inlen + 1) * 2; // 最大可能长度
-//    char *pin       = (char *)in;
-//    char *pout      = out;
-//    size_t inbytes  = inlen;
-//    size_t outbytes = outlen;
-//
-//    memset(out, 0, outlen);
-//    if (iconv(cd, &pin, &inbytes, &pout, &outbytes) == (size_t)-1) {
-//        iconv_close(cd);
-//        return -1;
-//    }
-//    iconv_close(cd);
-//    return outlen - outbytes;
-//}
-//
-//static int utf16ToAscii(char *out, const char *in, int inbytes)
-//{
-//    iconv_t cd = iconv_open("UTF-8", "UTF-16LE");
-//    if (cd == (iconv_t)-1)
-//        return -1;
-//
-//    char *pin     = (char *)in;
-//    char *pout    = out;
-//    size_t outlen = inbytes * 2 + 1;
-//    size_t insz   = inbytes;
-//    size_t outsz  = outlen;
-//
-//    memset(out, 0, outlen);
-//    if (iconv(cd, &pin, &insz, &pout, &outsz) == (size_t)-1) {
-//        iconv_close(cd);
-//        return -1;
-//    }
-//    iconv_close(cd);
-//    return outlen - outsz;
-//}
+// These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
+static int asciiToUtf16(char *out, const char *in)
+{
+    unsigned char *pin  = (unsigned char *)in;
+    unsigned char *pout = (unsigned char *)out;
+    int len             = 0, wc;
+
+    while (*pin) {
+        if (*pin < 0x80) {
+            // 1字节，ASCII
+            wc = *pin++;
+        } else if ((*pin & 0xe0) == 0xc0) {
+            // 2字节
+            wc = ((*pin & 0x1f) << 6) | (pin[1] & 0x3f);
+            pin += 2;
+        } else if ((*pin & 0xf0) == 0xe0) {
+            // 3字节
+            wc = ((*pin & 0x0f) << 12) | ((pin[1] & 0x3f) << 6) | (pin[2] & 0x3f);
+            pin += 3;
+        } else {
+            // 4字节码点，不支持（surrogate pair）
+            // 跳过或用?号
+            wc = '?';
+            pin++; // 或 pin += 4;
+        }
+        pout[0] = wc & 0xff; // LE低字节
+        pout[1] = (wc >> 8) & 0xff;
+        pout += 2;
+        len += 2;
+    }
+    // \0结尾
+    pout[0] = 0;
+    pout[1] = 0;
+    len += 2;
+    return len;
+}
+
+static int utf16ToAscii(char *out, const char *in, int inbytes)
+{
+    unsigned char *pin  = (unsigned char *)in;
+    unsigned char *pout = (unsigned char *)out;
+    int len             = 0;
+    while (inbytes >= 2) {
+        unsigned short wc = pin[0] | (pin[1] << 8);
+        pin += 2;
+        inbytes -= 2;
+
+        if (wc == 0x0000)
+            break; // end
+
+        if (wc < 0x80) {
+            *pout++ = wc;
+            len += 1;
+        } else if (wc < 0x800) {
+            *pout++ = 0xc0 | (wc >> 6);
+            *pout++ = 0x80 | (wc & 0x3f);
+            len += 2;
+        } else {
+            *pout++ = 0xe0 | (wc >> 12);
+            *pout++ = 0x80 | ((wc >> 6) & 0x3f);
+            *pout++ = 0x80 | (wc & 0x3f);
+            len += 3;
+        }
+        // surrogate pair高位(0xD800~0xDBFF)和低位(0xDC00~0xDFFF)不处理
+    }
+    *pout = 0;
+    return len + 1;
+}
 
 static int setStringField(char *out, const char *in)
 {
     int len;
 
-    //if (server_specs.Capabilities & SERVER_CAP_UNICODE) {
-    //    len = asciiToUtf16(out, in);
-    //} else {
-    //    len = strlen(in) + 1;
-    //    strcpy(out, in);
-    //}
-    len = strlen(in) + 1;
-    strcpy(out, in);
+    if (server_specs.Capabilities & SERVER_CAP_UNICODE) {
+        len = asciiToUtf16(out, in);
+    } else {
+        len = strlen(in) + 1;
+        strcpy(out, in);
+    }
 
     return len;
 }
@@ -326,22 +349,16 @@ static int getStringField(char *out, const char *in, int inbytes)
 {
     int len;
 
-    //if (server_specs.Capabilities & SERVER_CAP_UNICODE) {
-    //    len = utf16ToAscii(out, in, inbytes);
-    //} else {
-    //    if (inbytes != 0) {
-    //        strncpy(out, in, inbytes);
-    //        out[inbytes] = '\0';
-    //    } else
-    //        strcpy(out, in);
-    //    len = strlen(out) + 1;
-    //}
-    if (inbytes != 0) {
-        strncpy(out, in, inbytes);
-        out[inbytes] = '\0';
-    } else
-        strcpy(out, in);
-    len = strlen(out) + 1;
+    if (server_specs.Capabilities & SERVER_CAP_UNICODE) {
+        len = utf16ToAscii(out, in, inbytes);
+    } else {
+        if (inbytes != 0) {
+            strncpy(out, in, inbytes);
+            out[inbytes] = '\0';
+        } else
+            strcpy(out, in);
+        len = strlen(out) + 1;
+    }
 
     return len;
 }
