@@ -11,6 +11,8 @@
 #include <sysclib.h>
 #include <ps2ip.h>
 #include <ioman.h>
+#include <iconv.h>
+#include <string.h>
 
 #include "smb.h"
 #include "auth.h"
@@ -265,41 +267,45 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
 // These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
 static int asciiToUtf16(char *out, const char *in)
 {
-    int len;
-    const char *pIn;
-    char *pOut;
+    iconv_t cd = iconv_open("UTF-16LE", "UTF-8");
+    if (cd == (iconv_t)-1)
+        return -1;
 
-    for (pIn = in, pOut = out, len = 0; *pIn != '\0'; pIn++, pOut += 2, len += 2) {
-        pOut[0] = *pIn;
-        pOut[1] = '\0';
+    size_t inlen    = strlen(in);
+    size_t outlen   = (inlen + 1) * 2; // 最大可能长度
+    char *pin       = (char *)in;
+    char *pout      = out;
+    size_t inbytes  = inlen;
+    size_t outbytes = outlen;
+
+    memset(out, 0, outlen);
+    if (iconv(cd, &pin, &inbytes, &pout, &outbytes) == (size_t)-1) {
+        iconv_close(cd);
+        return -1;
     }
-
-    pOut[0] = '\0'; // NULL terminate.
-    pOut[1] = '\0';
-    len += 2;
-
-    return len;
+    iconv_close(cd);
+    return outlen - outbytes;
 }
 
 static int utf16ToAscii(char *out, const char *in, int inbytes)
 {
-    int len = 0;
-    const char *pIn = in;
-    char *pOut = out;
+    iconv_t cd = iconv_open("UTF-8", "UTF-16LE");
+    if (cd == (iconv_t)-1)
+        return -1;
 
-    // 以 2 字节为一组
-    while ((inbytes == 0) || (len < inbytes)) {
-        // 遇到 [0,0] (UTF-16LE 的 NULL) 视为结束
-        if (pIn[0] == 0 && pIn[1] == 0)
-            break;
+    char *pin     = (char *)in;
+    char *pout    = out;
+    size_t outlen = inbytes * 2 + 1;
+    size_t insz   = inbytes;
+    size_t outsz  = outlen;
 
-        *pOut++ = pIn[0]; // 只保留低字节
-        pIn += 2;
-        len += 2; // 处理了2个字节
+    memset(out, 0, outlen);
+    if (iconv(cd, &pin, &insz, &pout, &outsz) == (size_t)-1) {
+        iconv_close(cd);
+        return -1;
     }
-    *pOut = '\0'; // 输出以C风格字符串结尾
-
-    return (pOut - out);
+    iconv_close(cd);
+    return outlen - outsz;
 }
 
 static int setStringField(char *out, const char *in)
