@@ -11,8 +11,6 @@
 #include <sysclib.h>
 #include <ps2ip.h>
 #include <ioman.h>
-#include <iconv.h>
-#include <string.h>
 
 #include "smb.h"
 #include "auth.h"
