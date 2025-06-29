@@ -265,54 +265,70 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
 // These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
 static int asciiToUtf16(char *out, const char *in)
 {
-    int len;
-    const char *pIn;
-    char *pOut;
+    unsigned char *pin  = (unsigned char *)in;
+    unsigned char *pout = (unsigned char *)out;
+    int len             = 0, wc;
 
-    for (pIn = in, pOut = out, len = 0; *pIn != '\0'; pIn++, pOut += 2, len += 2) {
-        pOut[0] = *pIn;
-        pOut[1] = '\0';
+    while (*pin) {
+        if (*pin < 0x80) {
+            // 1字节，ASCII
+            wc = *pin++;
+        } else if ((*pin & 0xe0) == 0xc0) {
+            // 2字节
+            wc = ((*pin & 0x1f) << 6) | (pin[1] & 0x3f);
+            pin += 2;
+        } else if ((*pin & 0xf0) == 0xe0) {
+            // 3字节
+            wc = ((*pin & 0x0f) << 12) | ((pin[1] & 0x3f) << 6) | (pin[2] & 0x3f);
+            pin += 3;
+        } else {
+            // 4字节码点，不支持（surrogate pair）
+            // 跳过或用?号
+            wc = '?';
+            pin++; // 或 pin += 4;
+        }
+        pout[0] = wc & 0xff; // LE低字节
+        pout[1] = (wc >> 8) & 0xff;
+        pout += 2;
+        len += 2;
     }
-
-    pOut[0] = '\0'; // NULL terminate.
-    pOut[1] = '\0';
+    // \0结尾
+    pout[0] = 0;
+    pout[1] = 0;
     len += 2;
-
     return len;
 }
 
 static int utf16ToAscii(char *out, const char *in, int inbytes)
 {
-    int len, bytesProcessed;
-    const char *pIn;
-    char *pOut;
-    u16 wchar;
+    unsigned char *pin  = (unsigned char *)in;
+    unsigned char *pout = (unsigned char *)out;
+    int len             = 0;
+    while (inbytes >= 2) {
+        unsigned short wc = pin[0] | (pin[1] << 8);
+        pin += 2;
+        inbytes -= 2;
 
-    for (pIn = in, pOut = out, len = 0, bytesProcessed = 0; (inbytes == 0) || (bytesProcessed < inbytes); len++) {
-        wchar = pIn[0] | ((u16)pIn[1] << 8);
-        if (wchar == '\0')
-            break;
+        if (wc == 0x0000)
+            break; // end
 
-        if (wchar >= 0xD800 && wchar < 0xDC00) { // Skip surrogate. Replace unsupported character with '?'.
-            *pOut = '?';
-
-            pIn += 4;
-            bytesProcessed += 4;
-            pOut++;
+        if (wc < 0x80) {
+            *pout++ = wc;
+            len += 1;
+        } else if (wc < 0x800) {
+            *pout++ = 0xc0 | (wc >> 6);
+            *pout++ = 0x80 | (wc & 0x3f);
+            len += 2;
         } else {
-            // Write decoded character. Replace unsupported characters with '?'.
-            *pOut = (wchar > 128) ? '?' : (char)wchar;
-
-            pIn += 2;
-            bytesProcessed += 2;
-            pOut++;
+            *pout++ = 0xe0 | (wc >> 12);
+            *pout++ = 0x80 | ((wc >> 6) & 0x3f);
+            *pout++ = 0x80 | (wc & 0x3f);
+            len += 3;
         }
+        // surrogate pair高位(0xD800~0xDBFF)和低位(0xDC00~0xDFFF)不处理
     }
-
-    pOut[0] = '\0'; // NULL terminate.
-    len++;
-
-    return len;
+    *pout = 0;
+    return len + 1;
 }
 
 static int setStringField(char *out, const char *in)
