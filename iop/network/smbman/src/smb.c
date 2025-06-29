@@ -283,28 +283,23 @@ static int asciiToUtf16(char *out, const char *in)
 
 static int utf16ToAscii(char *out, const char *in, int inbytes)
 {
-    int len, bytesProcessed;
-    const char *pIn;
-    char *pOut;
-    u16 wchar;
+    int len = 0;
+    const char *pIn = in;
+    char *pOut = out;
 
-    for (pIn = in, pOut = out, len = 0, bytesProcessed = 0; (inbytes == 0) || (bytesProcessed < inbytes); len++) {
-        wchar = pIn[0] | ((u16)pIn[1] << 8);
-        if (wchar == '\0')
+    // 以 2 字节为一组
+    while ((inbytes == 0) || (len < inbytes)) {
+        // 遇到 [0,0] (UTF-16LE 的 NULL) 视为结束
+        if (pIn[0] == 0 && pIn[1] == 0)
             break;
 
-        // Write decoded character. Replace unsupported characters with '?'.
-        *pOut = (char)wchar;
-
+        *pOut++ = pIn[0]; // 只保留低字节
         pIn += 2;
-        bytesProcessed += 2;
-        pOut++;
+        len += 2; // 处理了2个字节
     }
+    *pOut = '\0'; // 输出以C风格字符串结尾
 
-    pOut[0] = '\0'; // NULL terminate.
-    len++;
-
-    return len;
+    return (pOut - out);
 }
 
 static int setStringField(char *out, const char *in)
