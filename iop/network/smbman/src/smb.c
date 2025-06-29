@@ -264,60 +264,62 @@ static int GetSMBServerReply(int shdrlen, void *spayload, int rhdrlen)
 }
 
 //-------------------------------------------------------------------------
-// These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
-static int asciiToUtf16(char *out, const char *in)
-{
-    iconv_t cd = iconv_open("UTF-16LE", "UTF-8");
-    if (cd == (iconv_t)-1)
-        return -1;
-
-    size_t inlen    = strlen(in);
-    size_t outlen   = (inlen + 1) * 2; // 最大可能长度
-    char *pin       = (char *)in;
-    char *pout      = out;
-    size_t inbytes  = inlen;
-    size_t outbytes = outlen;
-
-    memset(out, 0, outlen);
-    if (iconv(cd, &pin, &inbytes, &pout, &outbytes) == (size_t)-1) {
-        iconv_close(cd);
-        return -1;
-    }
-    iconv_close(cd);
-    return outlen - outbytes;
-}
-
-static int utf16ToAscii(char *out, const char *in, int inbytes)
-{
-    iconv_t cd = iconv_open("UTF-8", "UTF-16LE");
-    if (cd == (iconv_t)-1)
-        return -1;
-
-    char *pin     = (char *)in;
-    char *pout    = out;
-    size_t outlen = inbytes * 2 + 1;
-    size_t insz   = inbytes;
-    size_t outsz  = outlen;
-
-    memset(out, 0, outlen);
-    if (iconv(cd, &pin, &insz, &pout, &outsz) == (size_t)-1) {
-        iconv_close(cd);
-        return -1;
-    }
-    iconv_close(cd);
-    return outlen - outsz;
-}
+//// These functions will process UTF-16 characters on a byte-level, so that they will be safe for use with byte-alignment.
+//static int asciiToUtf16(char *out, const char *in)
+//{
+//    iconv_t cd = iconv_open("UTF-16LE", "UTF-8");
+//    if (cd == (iconv_t)-1)
+//        return -1;
+//
+//    size_t inlen    = strlen(in);
+//    size_t outlen   = (inlen + 1) * 2; // 最大可能长度
+//    char *pin       = (char *)in;
+//    char *pout      = out;
+//    size_t inbytes  = inlen;
+//    size_t outbytes = outlen;
+//
+//    memset(out, 0, outlen);
+//    if (iconv(cd, &pin, &inbytes, &pout, &outbytes) == (size_t)-1) {
+//        iconv_close(cd);
+//        return -1;
+//    }
+//    iconv_close(cd);
+//    return outlen - outbytes;
+//}
+//
+//static int utf16ToAscii(char *out, const char *in, int inbytes)
+//{
+//    iconv_t cd = iconv_open("UTF-8", "UTF-16LE");
+//    if (cd == (iconv_t)-1)
+//        return -1;
+//
+//    char *pin     = (char *)in;
+//    char *pout    = out;
+//    size_t outlen = inbytes * 2 + 1;
+//    size_t insz   = inbytes;
+//    size_t outsz  = outlen;
+//
+//    memset(out, 0, outlen);
+//    if (iconv(cd, &pin, &insz, &pout, &outsz) == (size_t)-1) {
+//        iconv_close(cd);
+//        return -1;
+//    }
+//    iconv_close(cd);
+//    return outlen - outsz;
+//}
 
 static int setStringField(char *out, const char *in)
 {
     int len;
 
-    if (server_specs.Capabilities & SERVER_CAP_UNICODE) {
-        len = asciiToUtf16(out, in);
-    } else {
-        len = strlen(in) + 1;
-        strcpy(out, in);
-    }
+    //if (server_specs.Capabilities & SERVER_CAP_UNICODE) {
+    //    len = asciiToUtf16(out, in);
+    //} else {
+    //    len = strlen(in) + 1;
+    //    strcpy(out, in);
+    //}
+    len = strlen(in) + 1;
+    strcpy(out, in);
 
     return len;
 }
@@ -326,16 +328,22 @@ static int getStringField(char *out, const char *in, int inbytes)
 {
     int len;
 
-    if (server_specs.Capabilities & SERVER_CAP_UNICODE) {
-        len = utf16ToAscii(out, in, inbytes);
-    } else {
-        if (inbytes != 0) {
-            strncpy(out, in, inbytes);
-            out[inbytes] = '\0';
-        } else
-            strcpy(out, in);
-        len = strlen(out) + 1;
-    }
+    //if (server_specs.Capabilities & SERVER_CAP_UNICODE) {
+    //    len = utf16ToAscii(out, in, inbytes);
+    //} else {
+    //    if (inbytes != 0) {
+    //        strncpy(out, in, inbytes);
+    //        out[inbytes] = '\0';
+    //    } else
+    //        strcpy(out, in);
+    //    len = strlen(out) + 1;
+    //}
+    if (inbytes != 0) {
+        strncpy(out, in, inbytes);
+        out[inbytes] = '\0';
+    } else
+        strcpy(out, in);
+    len = strlen(out) + 1;
 
     return len;
 }
