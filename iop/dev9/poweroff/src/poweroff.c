@@ -46,7 +46,7 @@ extern struct irx_export_table _exp_poweroff;
 
 //---------------------------------------------------------------------
 
-static void Shutdown();
+static void Shutdown(void* data);
 static void SendCmd(void* data);
 
 //---------------------------------------------------------------------
@@ -200,7 +200,7 @@ void RemovePowerOffHandler(pwoffcb func)
 
 void PoweroffShutdown()
 {
-	Shutdown(0);
+	Shutdown(NULL);
 }
 
 void* poweroff_rpc_server(int fno, void *data, int size)
@@ -209,7 +209,7 @@ void* poweroff_rpc_server(int fno, void *data, int size)
 
 	switch(fno) {
 	case PWROFF_SHUTDOWN:
-		Shutdown(0);
+		Shutdown(NULL);
 		break;
 
 	case PWROFF_ENABLE_AUTO_SHUTOFF:
@@ -230,11 +230,11 @@ void poweroff_rpc_Thread(void* param)
 {
 	(void)param;
 
-	SifInitRpc(0);
+	sceSifInitRpc(0);
 
-	SifSetRpcQueue(&qd, GetThreadId());
-	SifRegisterRpc(&sd0, PWROFF_IRX, poweroff_rpc_server, cmdData, NULL, NULL, &qd);
-	SifRpcLoop(&qd);
+	sceSifSetRpcQueue(&qd, GetThreadId());
+	sceSifRegisterRpc(&sd0, PWROFF_IRX, poweroff_rpc_server, cmdData, NULL, NULL, &qd);
+	sceSifRpcLoop(&qd);
 }
 
 int _start(int argc, char *argv[])

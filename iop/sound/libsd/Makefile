@@ -8,6 +8,13 @@
 
 IOP_BIN_ALTNAMES = freesd.irx
 
+IOP_IMPORT_INCS += \
+	system/intrman \
+	system/loadcore \
+	system/sifman \
+	system/stdio \
+	system/sysclib
+
 IOP_OBJS = freesd.o batch.o block.o effect.o voice.o exports.o imports.o
 
 include $(PS2SDKSRC)/Defs.make

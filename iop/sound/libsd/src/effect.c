@@ -106,7 +106,7 @@ void SetEffectData(u16 *mode_data, u32 core)
 	U16_REGISTER_WRITE(SD_R_IN_COEF_R(core), mode_data[31]);
 }
 
-int sceSdSetEffectAttr(int core, sceSdEffectAttr *attr)
+int sceSdSetEffectAttr(int core, const sceSdEffectAttr *attr)
 {
 	u32 mode = attr->mode;
 	u32 clearram = 0;
@@ -274,4 +274,3 @@ int sceSdClearEffectWorkArea(int core, int chan, int effect_type)
 
 	return 0;
 }
-

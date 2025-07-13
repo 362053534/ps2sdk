@@ -23,25 +23,25 @@ extern struct irx_export_table _exp_spduart;
 // Reference: https://www.freebsd.org/doc/en_US.ISO8859-1/articles/serial-uart/index.html
 typedef struct uart16550_regs_
 {
-	u8 r_wrthr_rdrbr;
+	u8 r_wrthr_rdrbr; /**< write=transmit holding register (THR) / read=receive buffer register (RBR) */
 	u8 pad01;
-	u8 r_wrfcr_rdiir;
+	u8 r_wrfcr_rdiir; /**< write=fifo control register (FCR) / read=interrupt identification register */
 	u8 pad03;
-	u8 r_lcr;
+	u8 r_lcr; /**< line control register (LCR) */
 	u8 pad05;
-	u8 r_mcr;
+	u8 r_mcr; /**< modem control register (MCR) */
 	u8 pad07;
-	u8 r_lsr;
+	u8 r_lsr; /**< line status register (LSR) */
 	u8 pad09;
-	u8 r_msr;
+	u8 r_msr; /**< modem status register (MSR) */
 	u8 pad0B;
-	u8 r_scr;
+	u8 r_scr; /**< scratch register (SCR) */
 	u8 pad0D;
 	u8 pad0E;
 	u8 pad0F;
-	u8 r_cr1;
+	u8 r_cr1; /**< control register 1 (CR1) */
 	u8 pad11;
-	u8 r_cr2;
+	u8 r_cr2; /**< control register 2 (CR2) */
 	u8 pad13;
 } uart16550_regs_t;
 
@@ -668,8 +668,9 @@ static void spduart_init_hw(struct spduart_internals_ *priv)
 	}
 }
 
-static void spduart_thread_proc(struct spduart_internals_ *priv)
+static void spduart_thread_proc(void *arg)
 {
+	struct spduart_internals_ *priv = arg;
 	int i;
 	int m_cur_xfer_len;
 	int v10;
@@ -1267,7 +1268,7 @@ static int module_start(int ac, char *av[], void *startaddr, ModuleInfo_t *mi)
 				if ( spduart_internals.spduart_ef > 0 )
 				{
 					v18.attr = 0x2000000;
-					v18.thread = (void (*)(void *))spduart_thread_proc;
+					v18.thread = spduart_thread_proc;
 					v18.option = 0;
 					v18.priority = spduart_internals.spduart_thpri_;
 					v18.stacksize = spduart_internals.spduart_thstack_;

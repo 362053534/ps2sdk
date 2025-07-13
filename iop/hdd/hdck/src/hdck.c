@@ -17,7 +17,6 @@
 #include <irx.h>
 #include <hdd-ioctl.h>
 
-#include "apa-opt.h"
 #include "libapa.h"
 
 #include "misc_hdck.h"
@@ -28,40 +27,43 @@ IRX_ID("hdck", APA_MODVER_MAJOR, APA_MODVER_MINOR);
 
 // Function prototypes
 static int HdckInit(iomanX_iop_device_t *device);
-static int HdckUnsupported(void);
 static int HdckDevctl(iomanX_iop_file_t *fd, const char *name, int cmd, void *arg, unsigned int arglen, void *buf, unsigned int buflen);
 
 static u8 IOBuffer[128 * 512];
 static u8 IOBuffer2[128 * 512];
 
+IOMANX_RETURN_VALUE_IMPL(0);
+IOMANX_RETURN_VALUE_IMPL(EPERM);
+
 static iomanX_iop_device_ops_t HdckDeviceOps = {
-    &HdckInit,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    (void *)&HdckUnsupported,
-    &HdckDevctl,
-    NULL,
-    NULL,
-    NULL};
+    &HdckInit, // init
+    IOMANX_RETURN_VALUE(0), // deinit
+    IOMANX_RETURN_VALUE(EPERM), // format
+    IOMANX_RETURN_VALUE(EPERM), // open
+    IOMANX_RETURN_VALUE(EPERM), // close
+    IOMANX_RETURN_VALUE(EPERM), // read
+    IOMANX_RETURN_VALUE(EPERM), // write
+    IOMANX_RETURN_VALUE(EPERM), // lseek
+    IOMANX_RETURN_VALUE(EPERM), // ioctl
+    IOMANX_RETURN_VALUE(EPERM), // remove
+    IOMANX_RETURN_VALUE(EPERM), // mkdir
+    IOMANX_RETURN_VALUE(EPERM), // rmdir
+    IOMANX_RETURN_VALUE(EPERM), // dopen
+    IOMANX_RETURN_VALUE(EPERM), // dclose
+    IOMANX_RETURN_VALUE(EPERM), // dread
+    IOMANX_RETURN_VALUE(EPERM), // getstat
+    IOMANX_RETURN_VALUE(EPERM), // chstat
+    IOMANX_RETURN_VALUE(EPERM), // rename
+    IOMANX_RETURN_VALUE(EPERM), // chdir
+    IOMANX_RETURN_VALUE(EPERM), // sync
+    IOMANX_RETURN_VALUE(EPERM), // mount
+    IOMANX_RETURN_VALUE(EPERM), // umount
+    IOMANX_RETURN_VALUE_S64(EPERM), // lseek64
+    &HdckDevctl, // devctl
+    IOMANX_RETURN_VALUE(EPERM), // symlink
+    IOMANX_RETURN_VALUE(EPERM), // readlink
+    IOMANX_RETURN_VALUE(EPERM), // ioctl2
+};
 
 static iomanX_iop_device_t HdckDevice = {
     "hdck",
@@ -97,11 +99,6 @@ static struct HdckPrivateData PrivateData = {
     0,
     0,
     0};
-
-static int HdckUnsupported(void)
-{
-    return -1;
-}
 
 static int HdckInit(iomanX_iop_device_t *device)
 {
@@ -380,8 +377,12 @@ static void RecoverPartitionIfSub(int device, apa_cache_t *clink)
 static apa_cache_t *apaCreateAlignedEmptyPartition(apa_cache_t *clink, u32 lba, u32 length)
 {
     apa_cache_t *result;
+    u32 minsize = 0x3FFFF; // 128MB
+#ifdef APA_8MB_PARTITION_SIZE
+    minsize = 0x3FFF; // 8MB
+#endif
 
-    for (length >>= 1; 0x0003FFFF < length; length >>= 1) {
+    for (length >>= 1; minsize < length; length >>= 1) {
         if (lba % length == 0) {
             result              = apaRemovePartition(clink->device, lba, lba + length, clink->header->start, length);
             clink->header->next = lba;

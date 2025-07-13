@@ -3,21 +3,25 @@
 #include <iox_stat.h>
 #include <loadcore.h>
 #include <sysclib.h>
+#include <errno.h>
 
 #include "cdfs_iop.h"
 
 // 16 sectors worth of toc entry
 #define MAX_FILES_PER_FOLDER 256
-#define MAX_FILES_OPENED 16
-#define MAX_FOLDERS_OPENED 16
+#define MAX_FILES_OPENED 4
+#define MAX_FOLDERS_OPENED 4
 #define MAX_BYTES_READ 16384
 
 #define DRIVER_UNIT_NAME "cdfs"
-#define DRIVER_UNIT_VERSION 2
-#define VERSION_STRINGIFY(x) #x
+#define DRIVER_MAJOR_VERSION 2
+#define DRIVER_MINOR_VERSION 2
 
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+#define DRIVER_DESC DRIVER_UNIT_NAME " Filedriver v" TOSTRING(DRIVER_MAJOR_VERSION) "." TOSTRING(DRIVER_MINOR_VERSION)
 
-IRX_ID(MODNAME, 1, 1);
+IRX_ID(MODNAME, DRIVER_MAJOR_VERSION, DRIVER_MINOR_VERSION);
 
 struct fdtable
 {
@@ -93,12 +97,12 @@ static int fio_open(iop_file_t *f, const char *name, int mode)
     // check if the file exists
     if (!cdfs_findfile(name, &tocEntry)) {
         printf("***** FILE %s CAN NOT FOUND ******\n\n", name);
-        return -1;
+        return -EPERM;
     }
 
     if (mode != O_RDONLY) {
         printf("mode is different than O_RDONLY, expected %i, received %i\n\n", O_RDONLY, mode);
-        return -2;
+        return -ENOENT;
     }   
 
     DPRINTF("CDFS: fio_open TocEntry info\n");
@@ -117,7 +121,7 @@ static int fio_open(iop_file_t *f, const char *name, int mode)
 
     if (j >= MAX_FILES_OPENED) {
         printf("File descriptor overflow!!\n\n");
-        return -3;
+        return -ESRCH;
     }
 
     fd_used[j] = 1;
@@ -142,7 +146,7 @@ static int fio_close(iop_file_t *f)
 
     if (i >= MAX_FILES_OPENED) {
         printf("fio_close: ERROR: File does not appear to be open!\n");
-        return -1;
+        return -EPERM;
     }
 
     fd_used[i] = 0;
@@ -170,7 +174,7 @@ static int fio_read(iop_file_t *f, void *buffer, int size)
 
     if (i >= MAX_FILES_OPENED) {
         printf("fio_read: ERROR: File does not appear to be open!\n");
-        return -1;
+        return -EPERM;
     }
 
     // A few sanity checks
@@ -231,7 +235,7 @@ static int fio_write(iop_file_t *f, void *buffer, int size)
         return 0;
     else {
         printf("CDFS: dummy fio_write function called, this is not a re-writer xD");
-        return -1;
+        return -EPERM;
     }
 }
 
@@ -248,7 +252,7 @@ static int fio_lseek(iop_file_t *f, int offset, int whence)
 
     if (i >= 16) {
         DPRINTF("fio_lseek: ERROR: File does not appear to be open!\n");
-        return -1;
+        return -EPERM;
     }
 
     switch (whence) {
@@ -293,12 +297,12 @@ static int fio_openDir(iop_file_t *f, const char *path) {
     }
 
     if (j >= MAX_FOLDERS_OPENED)
-        return -3;
+        return -ESRCH;
 
-    fod_table[j].files = cdfs_getDir(path, NULL, CDFS_GET_FILES_AND_DIRS, fod_table[j].entries, MAX_FILES_PER_FOLDER);
+    fod_table[j].files = cdfs_getDir(path, fod_table[j].entries, MAX_FILES_PER_FOLDER);
     if (fod_table[j].files < 0) {
         printf("The path doesn't exist\n\n");
-        return -2;
+        return -ENOENT;
     }
 
     fod_table[j].filesIndex = 0;
@@ -337,7 +341,7 @@ static int fio_closeDir(iop_file_t *fd)
 
     if (i >= MAX_FOLDERS_OPENED) {
         printf("fio_close: ERROR: File does not appear to be open!\n");
-        return -1;
+        return -EPERM;
     }
 
     fod_used[i] = 0;
@@ -358,13 +362,13 @@ static int fio_dread(iop_file_t *fd, io_dirent_t *dirent)
 
     if (i >= MAX_FOLDERS_OPENED) {
         printf("fio_dread: ERROR: Folder does not appear to be open!\n\n");
-        return -1;
+        return -EPERM;
     }
 
     filesIndex = fod_table[i].filesIndex;
     if (filesIndex >= fod_table[i].files) {
         printf("fio_dread: No more items pending to read!\n\n");
-        return -1;
+        return -EPERM;
     }
 
     entry = fod_table[i].entries[filesIndex];
@@ -380,10 +384,10 @@ static int fio_dread(iop_file_t *fd, io_dirent_t *dirent)
     dirent->stat.mode = (entry.fileProperties == CDFS_FILEPROPERTY_DIR) ? FIO_SO_IFDIR : FIO_SO_IFREG;
     dirent->stat.attr = entry.fileProperties;
     dirent->stat.size = entry.fileSize;
-    memcpy(dirent->stat.ctime, entry.dateStamp, 8);
-    memcpy(dirent->stat.atime, entry.dateStamp, 8);
-    memcpy(dirent->stat.mtime, entry.dateStamp, 8);
-    strncpy(dirent->name, entry.filename, 128);
+    memcpy(dirent->stat.ctime, entry.dateStamp, sizeof(entry.dateStamp));
+    memcpy(dirent->stat.atime, entry.dateStamp, sizeof(entry.dateStamp));
+    memcpy(dirent->stat.mtime, entry.dateStamp, sizeof(entry.dateStamp));
+    strncpy(dirent->name, entry.filename, sizeof(dirent->name));
     
     fod_table[i].filesIndex++;
     return fod_table[i].filesIndex;
@@ -392,7 +396,7 @@ static int fio_dread(iop_file_t *fd, io_dirent_t *dirent)
 static int fio_getstat(iop_file_t *fd, const char *name, io_stat_t *stat) 
 {
     struct TocEntry entry;
-    int ret = -1;
+    int ret = -EPERM;
 
     (void)fd;
 
@@ -410,43 +414,40 @@ static int fio_getstat(iop_file_t *fd, const char *name, io_stat_t *stat)
     stat->mode = (entry.fileProperties == CDFS_FILEPROPERTY_DIR) ? FIO_SO_IFDIR : FIO_SO_IFREG;
     stat->attr = entry.fileProperties;
     stat->size = entry.fileSize;
-    memcpy(stat->ctime, entry.dateStamp, 8);
-    memcpy(stat->atime, entry.dateStamp, 8);
-    memcpy(stat->mtime, entry.dateStamp, 8);
+    memcpy(stat->ctime, entry.dateStamp, sizeof(entry.dateStamp));
+    memcpy(stat->atime, entry.dateStamp, sizeof(entry.dateStamp));
+    memcpy(stat->mtime, entry.dateStamp, sizeof(entry.dateStamp));
 
     return ret;
 }
 
-static int cdfs_dummy() {
-    DPRINTF("CDFS: dummy function called\n\n");
-    return -5;
-}
+IOMAN_RETURN_VALUE_IMPL(EIO);
 
 static iop_device_ops_t fio_ops = {
-    &fio_init,
-    &fio_deinit,
-    (void *)&cdfs_dummy,
-    &fio_open,
-    &fio_close,
-    &fio_read,
-    &fio_write,
-    &fio_lseek,
-    (void *)&cdfs_dummy,
-    (void *)&cdfs_dummy,
-    (void *)&cdfs_dummy,
-    (void *)&cdfs_dummy,
-    &fio_openDir,
-    &fio_closeDir,
-    &fio_dread,
-    &fio_getstat,
-    (void *)&cdfs_dummy,
+    &fio_init, // init
+    &fio_deinit, // deinit
+    IOMAN_RETURN_VALUE(EIO), // format
+    &fio_open, // open
+    &fio_close, // close
+    &fio_read, // read
+    &fio_write, // write
+    &fio_lseek, // lseek
+    IOMAN_RETURN_VALUE(EIO), // ioctl
+    IOMAN_RETURN_VALUE(EIO), // remove
+    IOMAN_RETURN_VALUE(EIO), // mkdir
+    IOMAN_RETURN_VALUE(EIO), // rmdir
+    &fio_openDir, // dopen
+    &fio_closeDir, // dclose
+    &fio_dread, // dread
+    &fio_getstat, // getstat
+    IOMAN_RETURN_VALUE(EIO), // chstat
 };
 
 static iop_device_t fio_driver = {
     DRIVER_UNIT_NAME,
     IOP_DT_FS,
-    DRIVER_UNIT_VERSION,
-    DRIVER_UNIT_NAME " Filedriver v" VERSION_STRINGIFY(DRIVER_UNIT_VERSION),
+    DRIVER_MAJOR_VERSION,
+    DRIVER_DESC,
     &fio_ops,
 };
 

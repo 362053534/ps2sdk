@@ -23,7 +23,6 @@
 #endif
 #include <hdd-ioctl.h>
 
-#include "apa-opt.h"
 #include "libapa.h"
 #include "hdd_blkio.h"
 
@@ -258,6 +257,8 @@ apa_cache_t *apaDeleteFixPrev(apa_cache_t *clink, int *err)
     u32 saved_next = clink->header->next;
     u32 saved_length = clink->header->length;
     u32 tmp;
+    // TODO: switch to HDDDevices.partitionMaxSize
+    u32 maxsize = 0x1FFFFF; // 1Gb
 
     while (header->start) {
         if (!(clink2 = apaCacheGetHeader(device, header->prev, APA_IO_MODE_READ, err))) {
@@ -266,6 +267,11 @@ apa_cache_t *apaDeleteFixPrev(apa_cache_t *clink, int *err)
         }
         header = clink2->header;
         tmp = header->length + length;
+        // Check if the new size is larger than the maximum allowed size per APA specs
+        if (tmp > maxsize) {
+            apaCacheFree(clink2);
+            break;
+        }
         if (header->type != 0) {
             apaCacheFree(clink2);
             break;
@@ -303,6 +309,8 @@ apa_cache_t *apaDeleteFixNext(apa_cache_t *clink, int *err)
     u32 lnext = header->next;
     u32 device = clink->device;
     u32 tmp;
+    // TODO: switch to HDDDevices.partitionMaxSize
+    u32 maxsize = 0x1FFFFF; // 1Gb
 
     while (lnext != 0) {
         apa_cache_t *clink1;
@@ -313,6 +321,11 @@ apa_cache_t *apaDeleteFixNext(apa_cache_t *clink, int *err)
         }
         header = clink1->header;
         tmp = header->length + length;
+        // Check if the new size is larger than the maximum allowed size per APA specs
+        if (tmp > maxsize) {
+            apaCacheFree(clink1);
+            break;
+        }
         if (header->type != 0) {
             apaCacheFree(clink1);
             break;

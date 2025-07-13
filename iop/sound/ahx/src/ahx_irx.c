@@ -93,7 +93,7 @@ int _start(int argc, char *argv[])
     (void)argv;
 
     FlushDcache();
-    CpuEnableIntr(0);
+    CpuEnableIntr();
     EnableIntr(40); // Enables SPU DMA (channel 1) interrupt.
     param.attr      = TH_C;
     param.thread    = AHX_Thread;
@@ -160,10 +160,10 @@ void AHX_Thread(void *param)
 #endif
 
     // Init the RPC server
-    SifInitRpc(0);
-    SifSetRpcQueue(&qd, GetThreadId());
-    SifRegisterRpc(&Sd0, AHX_IRX, (void *)AHX_rpc_server, (void *)&buffer[0], 0, 0, &qd);
-    SifRpcLoop(&qd);
+    sceSifInitRpc(0);
+    sceSifSetRpcQueue(&qd, GetThreadId());
+    sceSifRegisterRpc(&Sd0, AHX_IRX, (void *)AHX_rpc_server, (void *)&buffer[0], 0, 0, &qd);
+    sceSifRpcLoop(&qd);
 }
 
 /** Playing Thread

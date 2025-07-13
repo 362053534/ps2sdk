@@ -29,7 +29,6 @@
 #include <iomanX.h>
 #include <hdd-ioctl.h>
 
-#include "apa-opt.h"
 #include <libapa.h>
 #include "hdd.h"
 #include "hdd_fio.h"
@@ -39,34 +38,36 @@
 IRX_ID("hdd_driver", APA_MODVER_MAJOR, APA_MODVER_MINOR);
 #endif
 
+IOMANX_RETURN_VALUE_IMPL(EPERM);
+
 static iomanX_iop_device_ops_t hddOps={
-	&hddInit,
-	&hddDeinit,
-	&hddFormat,
-	&hddOpen,
-	&hddClose,
-	&hddRead,
-	&hddWrite,
-	&hddLseek,
-	(void*)&hddUnsupported,
-	&hddRemove,
-	(void*)&hddUnsupported,
-	(void*)&hddUnsupported,
-	&hddDopen,
-	&hddClose,
-	&hddDread,
-	&hddGetStat,
-	(void*)&hddUnsupported,
-	&hddReName,
-	(void*)&hddUnsupported,
-	(void*)&hddUnsupported,
-	hddMount,
-	hddUmount,
-	(void*)&hddUnsupported,
-	&hddDevctl,
-	(void*)&hddUnsupported,
-	(void*)&hddUnsupported,
-	&hddIoctl2,
+	&hddInit, // init
+	&hddDeinit, // deinit
+	&hddFormat, // format
+	&hddOpen, // open
+	&hddClose, // close
+	&hddRead, // read
+	&hddWrite, // write
+	&hddLseek, // lseek
+	IOMANX_RETURN_VALUE(EPERM), // ioctl
+	&hddRemove, // remove
+	IOMANX_RETURN_VALUE(EPERM), // mkdir
+	IOMANX_RETURN_VALUE(EPERM), // rmdir
+	&hddDopen, // dopen
+	&hddClose, // dclose
+	&hddDread, // dread
+	&hddGetStat, // getstat
+	IOMANX_RETURN_VALUE(EPERM), // chstat
+	&hddReName, // rename
+	IOMANX_RETURN_VALUE(EPERM), // chdir
+	IOMANX_RETURN_VALUE(EPERM), // sync
+	hddMount, // mount
+	hddUmount, // umount
+	IOMANX_RETURN_VALUE_S64(EPERM), // lseek64
+	&hddDevctl, // devctl
+	IOMANX_RETURN_VALUE(EPERM), // symlink
+	IOMANX_RETURN_VALUE(EPERM), // readlink
+	&hddIoctl2, // ioctl2
 };
 static iomanX_iop_device_t hddFioDev={
 	"hdd",
@@ -115,6 +116,10 @@ apa_cache_t *hddAddPartitionHere(s32 device, const apa_params_t *params, u32 *em
 	u32			i;
 	u32			tmp, some_size, part_end;
 	u32			tempSize;
+    u32			minsize = 0x3FFFF; // 128MB
+#ifdef APA_8MB_PARTITION_SIZE
+    minsize = 0x3FFF; // 8Mb
+#endif
 
 	// walk empty blocks in case can use one :)
 	for(i=0;i< 32;i++)
@@ -146,7 +151,7 @@ apa_cache_t *hddAddPartitionHere(s32 device, const apa_params_t *params, u32 *em
 	while(part_end%params->size)
 	{
 		tempSize=params->size>>1;
-		while(0x3FFFF<tempSize)
+		while (minsize < tempSize) // 128MB
 		{
 			if(!(part_end%tempSize))
 			{
@@ -338,7 +343,7 @@ int APA_ENTRYPOINT(int argc, char *argv[])
 	{
 		if(hddDevices[i].status<2)
 		{
-			if(apaJournalRestore(i) != 0)
+			if((hddDevices[i].status != 1) && apaJournalRestore(i) != 0)
 			{
 				APA_PRINTF(APA_DRV_NAME": error: log check failed.\n");
 				return hddInitError();

@@ -182,11 +182,11 @@ static int getdigit(long double *val, int *cnt){
 ** will run.
 */
 
-int vxprintf(func,arg,format,ap)
-  void (*func)(char*,int,void*);
-  void *arg;
-  const char *format;
-  va_list ap;
+int vxprintf(
+  void (*func)(char*,int,void*),
+  void *arg,
+  const char *format,
+  va_list ap)
 {
   register const char *fmt; /* The format string. */
   register int c;           /* Next character in the format string */
@@ -692,10 +692,10 @@ struct s_strargument {    /* Describes the string being written to */
 
 void __sout(char *, int, void *);
 #ifdef F___sout
-void __sout(txt,amt,arg)
-  char *txt;
-  int amt;
-  void *arg;
+void __sout(
+  char *txt,
+  int amt,
+  void *arg)
 {
   register char *head;
   register const char *t;
@@ -1025,9 +1025,9 @@ static int npm_puts_init()
 	if ((npm_puts_sema = CreateSema(&sema)) < 0)
 		return -1;
 
-	SifInitRpc(0);
+	sceSifInitRpc(0);
 
-	while (((res = SifBindRpc(&npm_cd, NPM_RPC_SERVER, 0)) >= 0) &&
+	while (((res = sceSifBindRpc(&npm_cd, NPM_RPC_SERVER, 0)) >= 0) &&
 			(npm_cd.server == NULL))
 		nopdelay();
 
@@ -1058,7 +1058,7 @@ int npmPuts(const char *buf)
 		((char *) p)[511] = '\0';
 	}
 
-	if (SifCallRpc(&npm_cd, NPM_RPC_PUTS, 0, p, 512, NULL, 0, NULL, NULL) < 0)
+	if (sceSifCallRpc(&npm_cd, NPM_RPC_PUTS, 0, p, 512, NULL, 0, NULL, NULL) < 0)
 		return -E_SIF_RPC_CALL;
 
 	SignalSema(npm_puts_sema);
