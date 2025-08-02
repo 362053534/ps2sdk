@@ -1,0 +1,37 @@
+<map id="iop/usb/usbd/src/interface.c" name="iop/usb/usbd/src/interface.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="67,5,248,31"/>
+<area shape="rect" id="Node000002" href="$defs_8h.html" title=" " alt="" coords="15,226,71,252"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="91,34,52,52,35,64,21,80,13,96,10,113,11,148,20,182,32,212,27,214,14,184,5,149,4,112,8,94,17,78,31,61,49,47,89,29"/>
+<area shape="rect" id="Node000006" href="$thbase_8h.html" title=" " alt="" coords="229,226,299,252"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="209,29,247,47,265,61,279,78,291,112,292,148,286,183,278,213,272,211,281,182,287,148,286,113,274,80,261,65,245,52,207,34"/>
+<area shape="rect" id="Node000008" href="$usbdpriv_8h.html" title=" " alt="" coords="68,153,148,178"/>
+<area shape="poly" id="edge9_Node000001_Node000008" title=" " alt="" coords="99,34,61,52,44,65,31,80,26,97,34,114,50,129,70,143,67,147,47,133,30,117,21,98,26,78,40,61,58,47,97,29"/>
+<area shape="rect" id="Node000011" href="$driver_8h.html" title=" " alt="" coords="41,79,104,105"/>
+<area shape="poly" id="edge15_Node000001_Node000011" title=" " alt="" coords="145,34,100,71,96,67,141,29"/>
+<area shape="rect" id="Node000012" href="$mem_8h.html" title=" " alt="" coords="127,79,188,105"/>
+<area shape="poly" id="edge17_Node000001_Node000012" title=" " alt="" coords="160,31,160,63,155,63,155,31"/>
+<area shape="rect" id="Node000013" href="$hcd_8h.html" title=" " alt="" coords="211,79,264,105"/>
+<area shape="poly" id="edge19_Node000001_Node000013" title=" " alt="" coords="173,30,215,67,211,71,169,34"/>
+<area shape="rect" id="Node000014" href="$usbio_8h.html" title=" " alt="" coords="338,79,401,105"/>
+<area shape="poly" id="edge21_Node000001_Node000014" title=" " alt="" coords="194,29,325,73,323,78,193,34"/>
+<area shape="rect" id="Node000003" href="$iop_2kernel_2include_2types_8h_source.html" title=" " alt="" coords="170,374,233,399"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="48,252,59,287,69,306,82,324,118,351,157,369,154,374,115,355,78,328,65,309,54,289,43,253"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="119,447,186,473"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="196,401,171,436,167,433,191,398"/>
+<area shape="rect" id="Node000005" href="$tamtypes_8h.html" title=" " alt="" coords="210,447,294,473"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="212,398,237,433,233,436,208,401"/>
+<area shape="poly" id="edge6_Node000006_Node000003" title=" " alt="" coords="264,253,239,327,220,362,215,359,234,325,259,252"/>
+<area shape="rect" id="Node000007" href="$irx_8h.html" title=" " alt="" coords="179,300,224,326"/>
+<area shape="poly" id="edge7_Node000006_Node000007" title=" " alt="" coords="256,254,224,290,220,286,252,250"/>
+<area shape="poly" id="edge8_Node000007_Node000003" title=" " alt="" coords="204,326,204,358,199,358,199,326"/>
+<area shape="poly" id="edge14_Node000008_Node000002" title=" " alt="" coords="99,180,66,217,62,213,95,177"/>
+<area shape="rect" id="Node000009" href="$usbd_8h.html" title=" " alt="" coords="145,226,205,252"/>
+<area shape="poly" id="edge10_Node000008_Node000009" title=" " alt="" coords="121,177,155,213,151,217,117,180"/>
+<area shape="rect" id="Node000010" title=" " alt="" coords="92,300,154,326"/>
+<area shape="poly" id="edge13_Node000008_Node000010" title=" " alt="" coords="112,178,123,284,117,285,107,179"/>
+<area shape="poly" id="edge12_Node000009_Node000007" title=" " alt="" coords="182,251,194,284,189,286,177,253"/>
+<area shape="poly" id="edge11_Node000009_Node000010" title=" " alt="" coords="168,254,143,289,138,286,164,251"/>
+<area shape="poly" id="edge16_Node000011_Node000008" title=" " alt="" coords="81,104,98,138,93,140,76,106"/>
+<area shape="poly" id="edge18_Node000012_Node000008" title=" " alt="" coords="152,106,127,141,123,138,147,103"/>
+<area shape="poly" id="edge20_Node000013_Node000008" title=" " alt="" coords="217,108,145,147,142,142,214,103"/>
+</map>
