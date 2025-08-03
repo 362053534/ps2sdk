@@ -277,25 +277,25 @@ static void *InitCB(void *apParam, MPEGSequenceInfo *apInfo)
 
     lpParam->m_XFerPck->qwc = q - lpParam->m_XFerPck->data;
 
-    /* This initializes picture drawing packet. Just textrured sprite */
-    /* that occupies the whole screen (no aspect ratio is taken into  */
-    /* account for simplicity.                                        */
-    lpParam->m_DrawPck = packet_init(7, PACKET_NORMAL);
-    q                  = lpParam->m_DrawPck->data;
-    PACK_GIFTAG(q, GIF_SET_TAG(6, 1, 0, 0, 0, 1), GIF_REG_AD);
-    q++;
-    PACK_GIFTAG(q, GS_SET_TEX0(lpParam->m_TexAddr, lTBW, GS_PSM_32, lTW, lTH, 1, 1, 0, 0, 0, 0, 0), GS_REG_TEX0_1);
-    q++;
-    PACK_GIFTAG(q, GS_SET_PRIM(6, 0, 1, 0, 0, 0, 1, 0, 0), GS_REG_PRIM);
-    q++;
-    PACK_GIFTAG(q, GS_SET_UV(0, 0), GS_REG_UV);
-    q++;
-    PACK_GIFTAG(q, GS_SET_XYZ((2048 << 4), (2048 << 4), 0), GS_REG_XYZ2);
-    q++;
-    PACK_GIFTAG(q, GS_SET_UV(apInfo->m_Width << 4, apInfo->m_Height << 4), GS_REG_UV);
-    q++;
-    PACK_GIFTAG(q, GS_SET_XYZ((640 << 4) + (2048 << 4), (512 << 4) + (2048 << 4), 0), GS_REG_XYZ2);
-    q++;
+/* This initializes picture drawing packet. Just textrured sprite */
+/* that occupies the whole screen (no aspect ratio is taken into  */
+/* account for simplicity.                                        */
+ lpParam -> m_DrawPck = packet_init(7,PACKET_NORMAL);
+ q = lpParam -> m_DrawPck -> data;
+ PACK_GIFTAG(q, GIF_SET_TAG( 6, 1, 0, 0, 0, 1 ), GIF_REG_AD );
+ q++;
+ PACK_GIFTAG(q, GS_SET_TEX0( lpParam -> m_TexAddr, lTBW, GS_PSM_32, lTW, lTH, 1, 1, 0, 0, 0, 0, 0 ), GS_REG_TEX0_1 );
+ q++;
+ PACK_GIFTAG(q, GS_SET_PRIM( 6, 0, 1, 0, 0, 0, 1, 0, 0 ), GS_REG_PRIM );
+ q++;
+ PACK_GIFTAG(q, GS_SET_UV( 0, 0 ), GS_REG_UV  );
+ q++;
+ PACK_GIFTAG(q, GS_SET_XYZ( 0, 0, 0 ), GS_REG_XYZ2 );
+ q++;
+ PACK_GIFTAG(q, GS_SET_UV( apInfo -> m_Width << 4, apInfo -> m_Height << 4 ), GS_REG_UV );
+ q++;
+ PACK_GIFTAG(q, GS_SET_XYZ(  (640 << 4) + (2048 << 4), (512 << 4) + (2048 << 4), 0 ), GS_REG_XYZ2 );
+ q++;
 
     lpParam->m_DrawPck->qwc = q - lpParam->m_DrawPck->data;
 
