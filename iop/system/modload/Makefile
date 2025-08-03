@@ -8,15 +8,6 @@
 
 IOP_BIN ?= modload.irx
 
-IOP_INCS += \
-	-I$(PS2SDKSRC)/iop/system/intrman/include \
-	-I$(PS2SDKSRC)/iop/system/ioman/include \
-	-I$(PS2SDKSRC)/iop/system/loadcore/include \
-	-I$(PS2SDKSRC)/iop/system/stdio/include \
-	-I$(PS2SDKSRC)/iop/system/sysclib/include \
-	-I$(PS2SDKSRC)/iop/system/sysmem/include \
-	-I$(PS2SDKSRC)/iop/system/threadman/include
-
 IOP_OBJS = modload.o imports.o exports.o
 
 include $(PS2SDKSRC)/Defs.make
