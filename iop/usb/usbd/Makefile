@@ -8,7 +8,6 @@
 
 # IOP_CFLAGS += -DDEBUG
 
-IOP_OBJS = hcd.o hub.o interface.o mem.o usbd.o usbio.o driver.o imports.o exports.o
 IOP_PREFER_GPOPT = 16384
 
 IOP_INCS += \
@@ -18,6 +17,8 @@ IOP_INCS += \
 	-I$(PS2SDKSRC)/iop/system/sysclib/include \
 	-I$(PS2SDKSRC)/iop/system/sysmem/include \
 	-I$(PS2SDKSRC)/iop/system/threadman/include
+
+IOP_OBJS = hcd.o hub.o interface.o mem.o usbd.o usbio.o driver.o imports.o exports.o
 
 include $(PS2SDKSRC)/Defs.make
 include $(PS2SDKSRC)/iop/Rules.bin.make
