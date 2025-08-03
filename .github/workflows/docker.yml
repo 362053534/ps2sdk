@@ -3,7 +3,7 @@ name: CI-Docker
 on:
   push:
     branches:
-      - master
+      - test4
     tags:
       - v*
   repository_dispatch:
