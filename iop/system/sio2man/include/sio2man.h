@@ -10,8 +10,7 @@
 
 /**
  * @file
- * SIO2MAN from SDK 1.3 definitions
- * For all systems except arcade and DTL-T, rom0:SIO2MAN module definitions
+ * rom0:SIO2MAN module definitions
  */
 
 #ifndef __SIO2MAN_H__
@@ -19,10 +18,6 @@
 
 #include <types.h>
 #include <irx.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 struct _sio2_dma_arg { // size 12
 	void	*addr;
@@ -99,9 +94,5 @@ int sio2_transfer(sio2_transfer_data_t *td);
 #define I_sio2_pad_transfer_init DECLARE_IMPORT(23, sio2_pad_transfer_init)
 #define I_sio2_mc_transfer_init DECLARE_IMPORT(24, sio2_mc_transfer_init)
 #define I_sio2_transfer DECLARE_IMPORT(25, sio2_transfer)
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* __SIO2MAN_H__ */
