@@ -114,8 +114,6 @@ typedef struct _iop_sys_status
     unsigned int reserved[8];
 } iop_sys_status_t;
 
-extern void *GetThreadmanData(void);
-
 extern int CreateThread(iop_thread_t *thread);
 extern int DeleteThread(int thid);
 
@@ -171,9 +169,7 @@ extern int GetSystemStatusFlag();
 #define thbase_IMPORTS \
 	thbase_IMPORTS_start \
  \
-	I_GetThreadmanData \
- \
-	I_CreateThread \
+ 	I_CreateThread \
 	I_DeleteThread \
  \
  	I_StartThread \
@@ -229,7 +225,6 @@ extern int GetSystemStatusFlag();
 #define thbase_IMPORTS_start DECLARE_IMPORT_TABLE(thbase, 1, 1)
 #define thbase_IMPORTS_end   END_IMPORT_TABLE
 
-#define I_GetThreadmanData        DECLARE_IMPORT(3, GetThreadmanData)
 #define I_CreateThread            DECLARE_IMPORT(4, CreateThread)
 #define I_DeleteThread            DECLARE_IMPORT(5, DeleteThread)
 #define I_StartThread             DECLARE_IMPORT(6, StartThread)
