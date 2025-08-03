@@ -11,13 +11,7 @@ IOP_INCS += \
 	-I$(PS2SDKSRC)/iop/arcade/acjv/include \
 	-I$(PS2SDKSRC)/iop/arcade/acmem/include \
 	-I$(PS2SDKSRC)/iop/arcade/acram/include \
-	-I$(PS2SDKSRC)/iop/arcade/acsram/include \
-	-I$(PS2SDKSRC)/iop/system/loadcore/include \
-	-I$(PS2SDKSRC)/iop/system/sifcmd/include \
-	-I$(PS2SDKSRC)/iop/system/stdio/include \
-	-I$(PS2SDKSRC)/iop/system/sysclib/include \
-	-I$(PS2SDKSRC)/iop/system/sysmem/include \
-	-I$(PS2SDKSRC)/iop/system/threadman/include
+	-I$(PS2SDKSRC)/iop/arcade/acsram/include
 
 IOP_OBJS = \
 	acmeme-entry.o \
