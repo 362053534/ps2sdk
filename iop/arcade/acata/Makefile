@@ -8,13 +8,7 @@
 
 IOP_INCS += \
 	-I$(PS2SDKSRC)/iop/arcade/accore/include \
-	-I$(PS2SDKSRC)/iop/arcade/actimer/include \
-	-I$(PS2SDKSRC)/iop/system/intrman/include \
-	-I$(PS2SDKSRC)/iop/system/loadcore/include \
-	-I$(PS2SDKSRC)/iop/system/stdio/include \
-	-I$(PS2SDKSRC)/iop/system/sysclib/include \
-	-I$(PS2SDKSRC)/iop/system/sysmem/include \
-	-I$(PS2SDKSRC)/iop/system/threadman/include
+	-I$(PS2SDKSRC)/iop/arcade/actimer/include
 
 IOP_OBJS = \
 	acata-entry.o \
