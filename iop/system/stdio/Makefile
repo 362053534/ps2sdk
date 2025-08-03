@@ -8,11 +8,6 @@
 
 IOP_BIN ?= stdio.irx
 
-IOP_INCS += \
-	-I$(PS2SDKSRC)/iop/system/ioman/include \
-	-I$(PS2SDKSRC)/iop/system/loadcore/include \
-	-I$(PS2SDKSRC)/iop/system/sysclib/include
-
 IOP_OBJS = stdio.o exports.o imports.o
 
 include $(PS2SDKSRC)/Defs.make

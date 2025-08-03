@@ -7,13 +7,9 @@
 # Review ps2sdk README & LICENSE files for further details.
 
 IOP_INCS += \
-	-I$(PS2SDKSRC)/iop/arcade/acata/include \
 	-I$(PS2SDKSRC)/iop/arcade/accore/include \
-	-I$(PS2SDKSRC)/iop/dev9/atad/include \
-	-I$(PS2SDKSRC)/iop/system/loadcore/include \
-	-I$(PS2SDKSRC)/iop/system/stdio/include \
-	-I$(PS2SDKSRC)/iop/system/sysclib/include \
-	-I$(PS2SDKSRC)/iop/system/threadman/include
+	-I$(PS2SDKSRC)/iop/arcade/acata/include \
+	-I$(PS2SDKSRC)/iop/dev9/atad/include
 
 IOP_OBJS = \
 	acatad.o \

@@ -8,11 +8,6 @@
 
 IOP_BIN ?= sifinit.irx
 
-IOP_INCS += \
-	-I$(PS2SDKSRC)/iop/system/loadcore/include \
-	-I$(PS2SDKSRC)/iop/system/sifman/include \
-	-I$(PS2SDKSRC)/iop/system/stdio/include
-
 IOP_OBJS = sifinit.o imports.o
 
 include $(PS2SDKSRC)/Defs.make
