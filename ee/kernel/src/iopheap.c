@@ -38,7 +38,6 @@ int SifInitIopHeap()
         _rb_count = _iop_reboot_count;
         memset(&_ih_cd, 0, sizeof _ih_cd);
         _ih_caps = 0;
-        memset(&_ih_caps, 0, sizeof _ih_caps);
     }
 
     if (_ih_caps)
