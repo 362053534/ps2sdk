@@ -14,8 +14,6 @@ SUBDIRS = \
 	eesync-nano \
 	excepman \
 	heaplib \
-	igreeting \
-	igreeting-dtlt \
 	intrman \
 	intrmanp \
 	ioman \
