@@ -28,7 +28,7 @@
 #define sio2_transfer_reset2 sio2_transfer_reset
 #define sio2_pad2_transfer_init sio2_pad_transfer_init
 #define sio2_transfer_reset3 sio2_transfer_reset
-#define sio2_mc2_transfer_init sio2_pad_transfer_init
+#define sio2_mc2_transfer_init sio2_mc_transfer_init
 
 #ifdef SIO2MAN_NANO
 #define sio2_portN_ctrl1_get _retonly
