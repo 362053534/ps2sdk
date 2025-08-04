@@ -92,27 +92,25 @@ static int ttyfs_write(iop_file_t *file, void *ptr, int size) {
     return(bCount);
 }
 
-IOMAN_RETURN_VALUE_IMPL(EPERM);
-
 static iop_device_ops_t fsd_ops =
 {
     &ttyfs_init, // init
     &ttyfs_deinit, // deinit
-    IOMAN_RETURN_VALUE(EPERM), // format
+    NOT_SUPPORTED, // format
     &ttyfs_open, // open
     &ttyfs_close, // close
-    IOMAN_RETURN_VALUE(EPERM), // read
+    NOT_SUPPORTED, // read
     &ttyfs_write, // write
-    IOMAN_RETURN_VALUE(EPERM), // lseek
-    IOMAN_RETURN_VALUE(EPERM), // ioctl
-    IOMAN_RETURN_VALUE(EPERM), // remove
-    IOMAN_RETURN_VALUE(EPERM), // mkdir
-    IOMAN_RETURN_VALUE(EPERM), // rmdir
+    NOT_SUPPORTED, // lseek
+    NOT_SUPPORTED, // ioctl
+    NOT_SUPPORTED, // remove
+    NOT_SUPPORTED, // mkdir
+    NOT_SUPPORTED, // rmdir
     &ttyfs_dopen, // dopen
     &ttyfs_close, // dclose
-    IOMAN_RETURN_VALUE(EPERM), // dread
-    IOMAN_RETURN_VALUE(EPERM), // getstat
-    IOMAN_RETURN_VALUE(EPERM), // chstat
+    NOT_SUPPORTED, // dread
+    NOT_SUPPORTED, // getstat
+    NOT_SUPPORTED, // chstat
 };
 
 static iop_device_t tty_fsd =

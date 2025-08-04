@@ -38,8 +38,6 @@
 IRX_ID("hdd_driver", APA_MODVER_MAJOR, APA_MODVER_MINOR);
 #endif
 
-IOMANX_RETURN_VALUE_IMPL(EPERM);
-
 static iomanX_iop_device_ops_t hddOps={
 	&hddInit, // init
 	&hddDeinit, // deinit
@@ -49,24 +47,24 @@ static iomanX_iop_device_ops_t hddOps={
 	&hddRead, // read
 	&hddWrite, // write
 	&hddLseek, // lseek
-	IOMANX_RETURN_VALUE(EPERM), // ioctl
+	NOT_SUPPORTED, // ioctl
 	&hddRemove, // remove
-	IOMANX_RETURN_VALUE(EPERM), // mkdir
-	IOMANX_RETURN_VALUE(EPERM), // rmdir
+	NOT_SUPPORTED, // mkdir
+	NOT_SUPPORTED, // rmdir
 	&hddDopen, // dopen
 	&hddClose, // dclose
 	&hddDread, // dread
 	&hddGetStat, // getstat
-	IOMANX_RETURN_VALUE(EPERM), // chstat
+	NOT_SUPPORTED, // chstat
 	&hddReName, // rename
-	IOMANX_RETURN_VALUE(EPERM), // chdir
-	IOMANX_RETURN_VALUE(EPERM), // sync
+	NOT_SUPPORTED, // chdir
+	NOT_SUPPORTED, // sync
 	hddMount, // mount
 	hddUmount, // umount
-	IOMANX_RETURN_VALUE_S64(EPERM), // lseek64
+	NOT_SUPPORTED_S64, // lseek64
 	&hddDevctl, // devctl
-	IOMANX_RETURN_VALUE(EPERM), // symlink
-	IOMANX_RETURN_VALUE(EPERM), // readlink
+	NOT_SUPPORTED, // symlink
+	NOT_SUPPORTED, // readlink
 	&hddIoctl2, // ioctl2
 };
 static iomanX_iop_device_t hddFioDev={

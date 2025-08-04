@@ -1110,29 +1110,26 @@ int fio_close(iop_file_t *f)
   return 0;
 }
 
-IOMAN_RETURN_VALUE_IMPL(0);
-IOMAN_RETURN_VALUE_IMPL(EIO);
-
 static iop_device_ops_t fio_ops =
 
   {
   &fio_init, // init
-  IOMAN_RETURN_VALUE(0), // deinit
+  DUMMY_IMPLEMENTATION, // deinit
   &fio_format, // format
   &fio_open, // open
   &fio_close, // close
   &fio_read, // read
-  IOMAN_RETURN_VALUE(EIO), // write
-  IOMAN_RETURN_VALUE(EIO), // lseek
+  NOT_SUPPORTED, // write
+  NOT_SUPPORTED, // lseek
   &fio_ioctl, // ioctl
-  IOMAN_RETURN_VALUE(EIO), // remove
-  IOMAN_RETURN_VALUE(EIO), // mkdir
-  IOMAN_RETURN_VALUE(EIO), // rmdir
-  IOMAN_RETURN_VALUE(EIO), // dopen
-  IOMAN_RETURN_VALUE(EIO), // dclose
-  IOMAN_RETURN_VALUE(EIO), // dread
-  IOMAN_RETURN_VALUE(EIO), // getstat
-  IOMAN_RETURN_VALUE(EIO), // chstat
+  NOT_SUPPORTED, // remove
+  NOT_SUPPORTED, // mkdir
+  NOT_SUPPORTED, // rmdir
+  NOT_SUPPORTED, // dopen
+  NOT_SUPPORTED, // dclose
+  NOT_SUPPORTED, // dread
+  NOT_SUPPORTED, // getstat
+  NOT_SUPPORTED, // chstat
   };
 
 static iop_device_t kbd_filedrv = {

@@ -39,16 +39,14 @@ typedef struct _iop_device_ops_short
     int (*lseek)(iop_file_t *, int, int);
 } iop_device_ops_short_t;
 
-IOMAN_RETURN_VALUE_IMPL(0);
-
 static iop_device_ops_short_t imgdrv_ops = {
-    IOMAN_RETURN_VALUE(0), // init
-    IOMAN_RETURN_VALUE(0), // deinit
-    IOMAN_RETURN_VALUE(0), // format
-    IOMAN_RETURN_VALUE(0), // open
-    IOMAN_RETURN_VALUE(0), // close
+    DUMMY_IMPLEMENTATION, // init
+    DUMMY_IMPLEMENTATION, // deinit
+    NOT_SUPPORTED, // format
+    NOT_SUPPORTED, // open
+    NOT_SUPPORTED, // close
     &imgdrv_read, // read
-    IOMAN_RETURN_VALUE(0), // write
+    NOT_SUPPORTED, // write
     &imgdrv_lseek, // lseek
 };
 

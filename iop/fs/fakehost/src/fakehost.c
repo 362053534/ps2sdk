@@ -174,28 +174,25 @@ int fd_lseek( iop_io_file_t *fd, int offset, int whence)
 	return iomanX_lseek( realfd(fd), offset, whence );
 }
 
-IOMAN_RETURN_VALUE_IMPL(0);
-IOMAN_RETURN_VALUE_IMPL(EIO);
-
 // Function array for fileio structure.
 static iop_io_device_ops_t functions = {
-	IOMAN_RETURN_VALUE(0), // init
-	IOMAN_RETURN_VALUE(0), // deinit
-	IOMAN_RETURN_VALUE(EIO), // format
+	DUMMY_IMPLEMENTATION, // init
+	DUMMY_IMPLEMENTATION, // deinit
+	NOT_SUPPORTED, // format
 	&fd_open, // open
 	&fd_close, // close
 	&fd_read, // read
-	IOMAN_RETURN_VALUE(EIO), // write
+	NOT_SUPPORTED, // write
 	&fd_lseek, // lseek
-	IOMAN_RETURN_VALUE(EIO), // ioctl
-	IOMAN_RETURN_VALUE(EIO), // remove
-	IOMAN_RETURN_VALUE(EIO), // mkdir
-	IOMAN_RETURN_VALUE(EIO), // rmdir
-	IOMAN_RETURN_VALUE(EIO), // dopen
-	IOMAN_RETURN_VALUE(EIO), // dclose
-	IOMAN_RETURN_VALUE(EIO), // dread
-	IOMAN_RETURN_VALUE(EIO), // getstat
-	IOMAN_RETURN_VALUE(EIO), // chstat
+	NOT_SUPPORTED, // ioctl
+	NOT_SUPPORTED, // remove
+	NOT_SUPPORTED, // mkdir
+	NOT_SUPPORTED, // rmdir
+	NOT_SUPPORTED, // dopen
+	NOT_SUPPORTED, // dclose
+	NOT_SUPPORTED, // dread
+	NOT_SUPPORTED, // getstat
+	NOT_SUPPORTED, // chstat
 };
 
 // FileIO structure.

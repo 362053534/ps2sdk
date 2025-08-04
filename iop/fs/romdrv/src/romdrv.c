@@ -49,27 +49,24 @@ static int romLseek(iop_file_t *fd, int offset, int whence);
 static struct RomImg *romGetImageStat(const void *start, const void *end, struct RomImg *ImageStat);
 static struct RomdirFileStat *GetFileStatFromImage(const struct RomImg *ImageStat, const char *filename, struct RomdirFileStat *stat);
 
-IOMAN_RETURN_VALUE_IMPL(0);
-IOMAN_RETURN_VALUE_IMPL(EIO);
-
 static iop_device_ops_t ops = {
-    IOMAN_RETURN_VALUE(0), // init
-    IOMAN_RETURN_VALUE(0), // deinit
-    IOMAN_RETURN_VALUE(0), // format
+    DUMMY_IMPLEMENTATION, // init
+    DUMMY_IMPLEMENTATION, // deinit
+    NOT_SUPPORTED, // format
     &romOpen, // open
     &romClose, // close
     &romRead, // read
-    IOMAN_RETURN_VALUE(EIO), // write
+    NOT_SUPPORTED, // write
     &romLseek, // lseek
-    IOMAN_RETURN_VALUE(0), // ioctl
-    IOMAN_RETURN_VALUE(0), // remove
-    IOMAN_RETURN_VALUE(0), // mkdir
-    IOMAN_RETURN_VALUE(0), // rmdir
-    IOMAN_RETURN_VALUE(0), // dopen
-    IOMAN_RETURN_VALUE(0), // dclose
-    IOMAN_RETURN_VALUE(0), // dread
-    IOMAN_RETURN_VALUE(0), // getstat
-    IOMAN_RETURN_VALUE(0), // chstat
+    NOT_SUPPORTED, // ioctl
+    NOT_SUPPORTED, // remove
+    NOT_SUPPORTED, // mkdir
+    NOT_SUPPORTED, // rmdir
+    NOT_SUPPORTED, // dopen
+    NOT_SUPPORTED, // dclose
+    NOT_SUPPORTED, // dread
+    NOT_SUPPORTED, // getstat
+    NOT_SUPPORTED, // chstat
 };
 
 static iop_device_t DeviceOps = {
