@@ -11,6 +11,7 @@
 #include <thbase.h>
 #include <thevent.h>
 
+#include "pfs-opt.h"
 #include "libpfs.h"
 #include "misc_fsck.h"
 

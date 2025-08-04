@@ -19,6 +19,7 @@
 #include <irx.h>
 #include <hdd-ioctl.h>
 
+#include "pfs-opt.h"
 #include "libpfs.h"
 #include "fssk-ioctl.h"
 #include "fssk.h"

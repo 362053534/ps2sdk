@@ -14,6 +14,7 @@
 #include <iomanX.h>
 #include <hdd-ioctl.h>
 
+#include "pfs-opt.h"
 #include "libpfs.h"
 #include "bitmap_fsck.h"
 

@@ -12,6 +12,7 @@
 #include <sysclib.h>
 #include <hdd-ioctl.h>
 
+#include "apa-opt.h"
 #include "libapa.h"
 #include "hdsk-devctl.h"
 #include "hdsk.h"

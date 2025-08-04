@@ -18,6 +18,7 @@
 #include <string.h>
 #endif
 
+#include "pfs-opt.h"
 #include "libpfs.h"
 
 // Returns the next block descriptor inode

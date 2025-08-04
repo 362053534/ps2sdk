@@ -18,6 +18,7 @@
 #include <string.h>
 #endif
 
+#include "pfs-opt.h"
 #include "libpfs.h"
 
 // Attempt to expand the block segment 'blockpos' by 'count' blocks

@@ -18,6 +18,7 @@
 #endif
 #include <hdd-ioctl.h>
 
+#include "pfs-opt.h"
 #include "libpfs.h"
 
 extern u32 pfsBlockSize;

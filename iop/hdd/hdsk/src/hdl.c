@@ -21,6 +21,7 @@
 #include <irx.h>
 #include <hdd-ioctl.h>
 
+#include "apa-opt.h"
 #include "libapa.h"
 #include "hdsk.h"
 
