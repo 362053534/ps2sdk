@@ -61,7 +61,7 @@ jobs:
         push: true
         tags: ${{ env.DOCKER_TAG_LIST }}
         build-args: |
-          BASE_DOCKER_IMAGE=ghcr.io/${{ github.repository_owner }}/ps2toolchain:${{ env.DOCKER_TAG }}
+          BASE_DOCKER_IMAGE=ghcr.io/ps2dev/ps2toolchain@sha256:261e04602e5b4a098a8bead0a67e13e4885a1ecdd0fd7e89bcad4f41def8ff18
 
     - name: Send Compile action
       run: |
