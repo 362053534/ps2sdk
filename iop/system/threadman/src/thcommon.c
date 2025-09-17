@@ -314,7 +314,8 @@ void report_stack_overflow(struct thread *thread)
         }
     }
 
-    __builtin_trap();
+    // __builtin_trap();
+    return;
 }
 
 void do_delete_thread()

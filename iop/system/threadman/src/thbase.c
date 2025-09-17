@@ -228,8 +228,8 @@ int ExitThread()
     thctx.run_next = NULL;
     thread_leave(0, 0, state, 1);
 
-    Kprintf("panic ! Thread DORMANT !\n");
-    __builtin_trap();
+    // Kprintf("panic ! Thread DORMANT !\n");
+    // __builtin_trap();
 
     return KE_OK;
 }
@@ -248,8 +248,8 @@ int ExitDeleteThread()
     thctx.run_next = NULL;
     thread_leave(0, 0, state, 1);
 
-    Kprintf("panic ! Thread ExitDeleted !\n");
-   __builtin_trap();
+    // Kprintf("panic ! Thread ExitDeleted !\n");
+    // __builtin_trap();
 
     return KE_OK;
 }
