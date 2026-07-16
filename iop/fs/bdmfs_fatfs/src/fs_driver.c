@@ -679,7 +679,7 @@ int fs_ioctl2(iop_file_t *fd, int cmd, void *data, unsigned int datalen, void *r
             ret = (mounted_bd == NULL) ? -ENXIO : *(int *)(mounted_bd->name);
 
             // Check for a return buffer and copy the whole name.
-            if (rdata != NULL)
+            if (rdata && mounted_bd)
                 strncpy(rdata, mounted_bd->name, rdatalen);
             break;
         }
