@@ -79,7 +79,7 @@ static void wipeUserMem(void)
 int main(int argc, char *argv[])
 {
 	static t_ExecData elfdata;
-	int ret, i;
+	int ret, i, new_argc;
 
 	elfdata.epc = 0;
 
@@ -97,9 +97,19 @@ int main(int argc, char *argv[])
 	strcpy(fullPath, argv[0]);
 	strcat(fullPath, argv[1]);
 	// final new_argv[0] is partition + path to elf
-	new_argv[0] = fullPath;
-	for (i = 2; i < argc; i++) {
-		new_argv[i - 1] = argv[i];
+	if (argc > 2 && !strncmp(argv[2], "uLE:", 4)) {
+		// POPStarter's direct launch convention requires the virtual ELF name as argv[0].
+		new_argv[0] = argv[2];
+		for (i = 3; i < argc; i++) {
+			new_argv[i - 2] = argv[i];
+		}
+		new_argc = argc - 2;
+	} else {
+		new_argv[0] = fullPath;
+		for (i = 2; i < argc; i++) {
+			new_argv[i - 1] = argv[i];
+		}
+		new_argc = argc - 1;
 	}
 
 	SET_GS_BGCOLOUR(CYAN_BG);
@@ -140,7 +150,7 @@ int main(int argc, char *argv[])
 
 		SET_GS_BGCOLOUR(PURPBLE_BG);
 		
-		return ExecPS2((void *)elfdata.epc, (void *)elfdata.gp, argc-1, new_argv);
+		return ExecPS2((void *)elfdata.epc, (void *)elfdata.gp, new_argc, new_argv);
 	} else {
 		SET_GS_BGCOLOUR(MAGENTA_BG);
 		SifExitRpc();
