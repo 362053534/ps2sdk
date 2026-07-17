@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "elf.h"
 
@@ -59,7 +60,7 @@ int LoadELFFromFileWithPartition(const char *filename, const char *partition, in
 	int new_argc = argc + 2;
 	
 	// We need to check that the ELF file before continue
-	if (!file_exists(filename)) {
+	if (strncmp(filename, "mem:", 4) && !file_exists(filename)) {
 		return -1; // ELF file doesn't exists
 	}
 	// ELF Exists
@@ -105,3 +106,12 @@ int LoadELFFromFile(const char *filename, int argc, char *argv[])
 {
 	return LoadELFFromFileWithPartition(filename, NULL, argc, argv);
 }
+
+int LoadELFFromMemoryWithPartition(const void *elf, const char *partition, int argc, char *argv[])
+{
+	char filename[13];
+
+	snprintf(filename, sizeof(filename), "mem:%08X", (u32)elf);
+	return LoadELFFromFileWithPartition(filename, partition, argc, argv);
+}
+

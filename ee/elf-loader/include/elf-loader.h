@@ -50,6 +50,9 @@ extern int LoadELFFromFile(const char *filename, int argc, char *argv[]);
  */
 extern int LoadELFFromFileWithPartition(const char *filename, const char *partition, int argc, char *argv[]);
 
+// Load an ELF that is already present in EE memory.
+extern int LoadELFFromMemoryWithPartition(const void *elf, const char *partition, int argc, char *argv[]);
+
 #ifdef __cplusplus
 }
 #endif

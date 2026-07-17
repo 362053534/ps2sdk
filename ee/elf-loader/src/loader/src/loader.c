@@ -18,6 +18,11 @@
 #include <errno.h>
 #include <ps2sdkapi.h>
 
+#include "../../elf.h"
+
+#define ELF_MAGIC 0x464c457f
+#define ELF_PT_LOAD 1
+
 #ifdef LOADER_ENABLE_DEBUG_COLORS
 #define SET_GS_BGCOLOUR(colour) {*((volatile unsigned long int *)0x120000E0) = colour;}
 #else
@@ -116,14 +121,38 @@ int main(int argc, char *argv[])
 
 	// Initialize
 	SifInitRpc(0);
-	wipeUserMem();
+	if (!strncmp(argv[1], "mem:", 4)) {
+		u8 *boot_elf = (u8 *)strtoul(argv[1] + 4, NULL, 16);
+		elf_header_t *eh = (elf_header_t *)boot_elf;
+		elf_pheader_t *eph;
 
-	//Writeback data cache before loading ELF.
-	FlushCache(0);
-	SET_GS_BGCOLOUR(GREEN_BG);
-	SifLoadFileInit();
-	ret = SifLoadElf(argv[1], &elfdata);
-	SifLoadFileExit();
+		SET_GS_BGCOLOUR(GREEN_BG);
+		if (_lw((u32)&eh->ident) != ELF_MAGIC)
+			return -EINVAL;
+
+		eph = (elf_pheader_t *)(boot_elf + eh->phoff);
+		for (i = 0; i < eh->phnum; i++) {
+			if (eph[i].type != ELF_PT_LOAD)
+				continue;
+
+			memcpy(eph[i].vaddr, boot_elf + eph[i].offset, eph[i].filesz);
+			if (eph[i].memsz > eph[i].filesz)
+				memset((u8 *)eph[i].vaddr + eph[i].filesz, 0, eph[i].memsz - eph[i].filesz);
+		}
+
+		elfdata.epc = eh->entry;
+		elfdata.gp = 0;
+		ret = 0;
+	} else {
+		wipeUserMem();
+
+		//Writeback data cache before loading ELF.
+		FlushCache(0);
+		SET_GS_BGCOLOUR(GREEN_BG);
+		SifLoadFileInit();
+		ret = SifLoadElf(argv[1], &elfdata);
+		SifLoadFileExit();
+	}
 	SET_GS_BGCOLOUR(BLUE_BG);
 	if (ret == 0 && elfdata.epc != 0) {
 		SET_GS_BGCOLOUR(YELLOW_BG);
