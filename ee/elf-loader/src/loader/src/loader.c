@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
 	strcpy(fullPath, argv[0]);
 	strcat(fullPath, argv[1]);
 	// final new_argv[0] is partition + path to elf
-	if (argc > 2 && !strncmp(argv[2], "uLE:", 4)) {
+	if (!strncmp(argv[1], "mem:", 4) && argc > 2) {
 		// POPStarter's direct launch convention requires the virtual ELF name as argv[0].
 		new_argv[0] = argv[2];
 		for (i = 3; i < argc; i++) {

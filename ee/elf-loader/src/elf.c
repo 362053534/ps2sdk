@@ -107,11 +107,11 @@ int LoadELFFromFile(const char *filename, int argc, char *argv[])
 	return LoadELFFromFileWithPartition(filename, NULL, argc, argv);
 }
 
-int LoadELFFromMemoryWithPartition(const void *elf, const char *partition, int argc, char *argv[])
+int LoadELFFromMemory(const void *elf, int argc, char *argv[])
 {
 	char filename[13];
 
 	snprintf(filename, sizeof(filename), "mem:%08X", (u32)elf);
-	return LoadELFFromFileWithPartition(filename, partition, argc, argv);
+	return LoadELFFromFileWithPartition(filename, NULL, argc, argv);
 }
 
