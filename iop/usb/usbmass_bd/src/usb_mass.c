@@ -373,8 +373,13 @@ static int usb_bulk_command(mass_dev *dev, cbw_packet *packet)
     usb_callback_data cb_data;
 
     if (dev->status & USBMASS_DEV_STAT_ERR) {
-        M_DEBUG("Rejecting I/O to offline device %d.\n", dev->devId);
-        return -1;
+        M_DEBUG("Trying reset recovery for offline device %d.\n", dev->devId);
+        dev->status &= ~USBMASS_DEV_STAT_ERR;
+        usb_bulk_reset(dev, 3);
+        if (dev->status & USBMASS_DEV_STAT_ERR) {
+            M_DEBUG("Rejecting I/O to offline device %d.\n", dev->devId);
+            return -1;
+        }
     }
 
     cb_data.sema = dev->ioSema;
