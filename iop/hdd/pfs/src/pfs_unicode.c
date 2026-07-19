@@ -17,7 +17,7 @@ int pfsUTF8toGBK(char *dst, unsigned int dstlen, const char *src)
     const unsigned char *p = (const unsigned char *)src;
     unsigned int i = 0;
 
-    if (dst == NULL || src == NULL || dstlen == 0)
+    if (!dst || !src || !dstlen)
         return -1;
 
     while (*p != '\0') {
@@ -63,7 +63,7 @@ int pfsGBKtoUTF8(char *dst, unsigned int dstlen, const char *src)
     const unsigned char *p = (const unsigned char *)src;
     unsigned int i = 0;
 
-    if (dst == NULL || src == NULL || dstlen == 0)
+    if (!dst || !src || !dstlen)
         return -1;
 
     while (*p != '\0') {
