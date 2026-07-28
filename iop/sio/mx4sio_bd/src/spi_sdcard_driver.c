@@ -171,7 +171,7 @@ int spisd_init_card()
         timeout--;
     } while ((response != SPISD_R1_IDLE_FLAG) && timeout > 0);
 
-    if (!timeout) {
+    if (response != SPISD_R1_IDLE_FLAG) {
         M_DEBUG("ERROR: CMD0 returned 0x%x, exp: 0x1\n", response);
         return SPISD_RESULT_TIMEOUT;
     }
@@ -597,7 +597,11 @@ int spisd_read(struct block_device *bd, uint64_t sector, void *buffer, uint16_t 
         results = spisd_read_multi_begin((uint32_t)sector);
         if (results != SPISD_RESULT_OK) {
             M_DEBUG("ERROR: failed to start multi-block read\n");
-            break;
+            if (spisd_recover() != SPISD_RESULT_OK)
+                break;
+
+            retries++;
+            continue;
         }
 
         /* start reading blocks */
@@ -607,6 +611,7 @@ int spisd_read(struct block_device *bd, uint64_t sector, void *buffer, uint16_t 
         /* fail condition */
         if (sectors_left > 0) {
             buffer = (uint8_t *)buffer + (results * 512);
+            sector += results;
             M_DEBUG("ERROR: failed to read all sectors, read:%i, abort:%i\n", sectors_left, cmd.abort);
 
             if (cmd.abort == CMD_ABORT_NO_READ_TOKEN) {
@@ -615,6 +620,9 @@ int spisd_read(struct block_device *bd, uint64_t sector, void *buffer, uint16_t 
                     /* if recovery fails, do not try to continue  */
                     break;
                 }
+
+                retries++;
+                continue;
             }
         }
         /* send CMD12, end transfer */
