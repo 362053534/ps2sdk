@@ -9,7 +9,6 @@
 LIBPFS_PATH = $(PS2SDKSRC)/iop/hdd/libpfs/
 
 LIBPFS_SRC_DIR = $(LIBPFS_PATH)src/
-FATFS := $(PS2SDKSRC)/common/external_deps/fatfs
 
 IOP_BIN ?= ps2fs.irx
 
@@ -27,12 +26,12 @@ IOP_IMPORT_INCS += \
 	system/sysmem \
 	system/threadman
 
-IOP_INCS += -I$(LIBPFS_PATH)include -I$(FATFS)/source/include
+IOP_INCS += -I$(LIBPFS_PATH)include
 
 IOP_LIBS += -lgcc
 
 PFS_OBJS = bitmap.o dir.o inode.o journal.o misc.o super.o superWrite.o cache.o block.o blockWrite.o
-IOP_OBJS = pfs.o pfs_fio.o pfs_fioctl.o pfs_unicode.o ffunicode.o imports.o $(PFS_OBJS)
+IOP_OBJS = pfs.o pfs_fio.o pfs_fioctl.o imports.o $(PFS_OBJS)
 
 include $(PS2SDKSRC)/Defs.make
 include $(PS2SDKSRC)/iop/Rules.bin.make
@@ -41,10 +40,3 @@ include $(PS2SDKSRC)/iop/Rules.release
 
 $(IOP_OBJS_DIR)%.o: $(LIBPFS_SRC_DIR)%.c
 	$(IOP_CC) $(IOP_CFLAGS) -c $< -o $@
-
-$(IOP_OBJS_DIR)ffunicode.o: $(FATFS)/source/ffunicode.c
-	$(DIR_GUARD)
-	$(IOP_CC) $(IOP_CFLAGS) -c $< -o $@
-
-.NOTPARALLEL:: \
-	$(FATFS)

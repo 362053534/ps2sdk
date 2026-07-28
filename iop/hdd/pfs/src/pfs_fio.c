@@ -26,7 +26,6 @@
 #include "pfs.h"
 #include "pfs_fio.h"
 #include "pfs_fioctl.h"
-#include "pfs_unicode.h"
 
 ///////////////////////////////////////////////////////////////////////////////
 //	Globals
@@ -592,7 +591,6 @@ int	pfsFioFormat(iomanX_iop_file_t *f, const char *dev, const char *blockdev, vo
 
 int	pfsFioOpen(iomanX_iop_file_t *f, const char *name, int flags, int mode)
 {
-	char _name[256];
 	int rv = 0;
 	s32 i;
 	pfs_file_slot_t *freeSlot;
@@ -602,8 +600,6 @@ int	pfsFioOpen(iomanX_iop_file_t *f, const char *name, int flags, int mode)
 
 	if(!name)
 		return -ENOENT;
-	if (pfsUTF8toGBK(_name, sizeof(_name), name) != 0)
-		return -EINVAL;
 
 	if(!(pfsMount = pfsFioGetMountedUnit(f->unit)))
 	{
@@ -630,7 +626,7 @@ pfsOpen_slotFound:
 	}
 
 	// Do actual open
-	if((rv = openFile(pfsMount, freeSlot, _name, f->mode, (mode & 0xfff) | FIO_S_IFREG)))
+	if((rv = openFile(pfsMount, freeSlot, name, f->mode, (mode & 0xfff) | FIO_S_IFREG)))
 		goto pfsOpen_end;
 
 	freeSlot->fd = f;
@@ -842,17 +838,13 @@ static int _remove(pfs_mount_t *pfsMount, const char *path, int mode)
 
 int	pfsFioRemove(iomanX_iop_file_t *f, const char *name)
 {
-	char _name[256];
 	pfs_mount_t *pfsMount;
 	int rv;
-
-	if (pfsUTF8toGBK(_name, sizeof(_name), name) != 0)
-		return -EINVAL;
 
 	if(!(pfsMount = pfsFioGetMountedUnit(f->unit)))
 		return -ENODEV;
 
-	rv = _remove(pfsMount, _name, 0);
+	rv = _remove(pfsMount, name, 0);
 
 	SignalSema(pfsFioSema);
 
@@ -861,19 +853,15 @@ int	pfsFioRemove(iomanX_iop_file_t *f, const char *name)
 
 int	pfsFioMkdir(iomanX_iop_file_t *f, const char *path, int mode)
 {
-	char _path[256];
 	pfs_mount_t *pfsMount;
 	int rv;
-
-	if (pfsUTF8toGBK(_path, sizeof(_path), path) != 0)
-		return -EINVAL;
 
 	mode = (mode & 0xfff) | 0x10000 | FIO_S_IFDIR;	// TODO: change to some constant/macro
 
 	if(!(pfsMount = pfsFioGetMountedUnit(f->unit)))
 		return -ENODEV;
 
-	rv = openFile(pfsMount, NULL, _path, FIO_O_CREAT | FIO_O_WRONLY, mode);
+	rv = openFile(pfsMount, NULL, path, FIO_O_CREAT | FIO_O_WRONLY, mode);
 
 	SignalSema(pfsFioSema);
 
@@ -882,7 +870,6 @@ int	pfsFioMkdir(iomanX_iop_file_t *f, const char *path, int mode)
 
 int	pfsFioRmdir(iomanX_iop_file_t *f, const char *path)
 {
-	char _path[256];
 	pfs_mount_t *pfsMount;
 	const char *temp;
 	int rv;
@@ -890,13 +877,11 @@ int	pfsFioRmdir(iomanX_iop_file_t *f, const char *path)
 	temp = path + strlen(path);
 	if(*temp == '.')
 		return -EINVAL;
-	if (pfsUTF8toGBK(_path, sizeof(_path), path) != 0)
-		return -EINVAL;
 
 	if(!(pfsMount = pfsFioGetMountedUnit(f->unit)))
 		return -ENODEV;
 
-	rv = _remove(pfsMount, _path, 0x01); // TODO: constant for 0x01 ?
+	rv = _remove(pfsMount, path, 0x01); // TODO: constant for 0x01 ?
 
 	SignalSema(pfsFioSema);
 
@@ -910,7 +895,6 @@ int pfsFioDopen(iomanX_iop_file_t *f, const char *name)
 
 int	pfsFioDread(iomanX_iop_file_t *f, iox_dirent_t *dirent)
 {
-	char _name[256];
 	pfs_file_slot_t *fileSlot = (pfs_file_slot_t *)f->privdata;
 	pfs_mount_t *pfsMount;
 	pfs_cache_t *clink;
@@ -931,8 +915,9 @@ int	pfsFioDread(iomanX_iop_file_t *f, iox_dirent_t *dirent)
 	else
 	{
 		if((rv = pfsGetNextDentry(fileSlot->clink, &fileSlot->block_pos, (u32 *)&fileSlot->position,
-									_name, &bi)) > 0)
+									dirent->name, &bi)) > 0)
 		{
+
 			clink = pfsInodeGetData(pfsMount, bi.subpart, bi.number, &result);
 			if(clink != NULL)
 			{
@@ -942,8 +927,6 @@ int	pfsFioDread(iomanX_iop_file_t *f, iox_dirent_t *dirent)
 
 			if(result)
 				rv = result;
-			if (rv > 0 && pfsGBKtoUTF8(dirent->name, sizeof(dirent->name), _name) != 0)
-				rv = -EINVAL;
 		}
 	}
 
@@ -977,18 +960,14 @@ static void fioStatFiller(pfs_cache_t *clink, iox_stat_t *stat)
 
 int	pfsFioGetstat(iomanX_iop_file_t *f, const char *name, iox_stat_t *stat)
 {
-	char _name[256];
 	pfs_mount_t *pfsMount;
 	pfs_cache_t *clink;
 	int rv=0;
 
-	if (pfsUTF8toGBK(_name, sizeof(_name), name) != 0)
-		return -EINVAL;
-
 	if(!(pfsMount = pfsFioGetMountedUnit(f->unit)))
 		return -ENODEV;
 
-	clink=pfsInodeGetFile(pfsMount, NULL, _name, &rv);
+	clink=pfsInodeGetFile(pfsMount, NULL, name, &rv);
 	if(clink!=NULL)
 	{
 		fioStatFiller(clink, stat);
@@ -1001,13 +980,9 @@ int	pfsFioGetstat(iomanX_iop_file_t *f, const char *name, iox_stat_t *stat)
 
 int	pfsFioChstat(iomanX_iop_file_t *f, const char *name, iox_stat_t *stat, unsigned int statmask)
 {
-	char _name[256];
 	pfs_mount_t *pfsMount;
 	pfs_cache_t *clink;
 	int rv = 0;
-
-	if (pfsUTF8toGBK(_name, sizeof(_name), name) != 0)
-		return -EINVAL;
 
 	if(!(pfsMount = pfsFioGetMountedUnit(f->unit)))
 		return -ENODEV;
@@ -1018,7 +993,7 @@ int	pfsFioChstat(iomanX_iop_file_t *f, const char *name, iox_stat_t *stat, unsig
 		return -EBADF;
 	}
 #endif
-	clink = pfsInodeGetFile(pfsMount, NULL, _name, &rv);
+	clink = pfsInodeGetFile(pfsMount, NULL, name, &rv);
 	if(clink != NULL) {
 
 		rv = pfsCheckAccess(clink, 0x02);
@@ -1058,7 +1033,7 @@ int	pfsFioChstat(iomanX_iop_file_t *f, const char *name, iox_stat_t *stat, unsig
 
 int pfsFioRename(iomanX_iop_file_t *ff, const char *old, const char *new)
 {
-	char _old[256], _new[256], path1[256], path2[256];
+	char path1[256], path2[256];
 	int result=0;
 	pfs_mount_t *pfsMount;
 	int f, sameParent;
@@ -1066,9 +1041,6 @@ int pfsFioRename(iomanX_iop_file_t *ff, const char *old, const char *new)
 	pfs_cache_t *removeOld=NULL, *removeNew=NULL;
 	pfs_cache_t *iFileOld=NULL, *iFileNew=NULL;
 	pfs_cache_t *newParent=NULL,*addNew=NULL;
-
-	if (pfsUTF8toGBK(_old, sizeof(_old), old) != 0 || pfsUTF8toGBK(_new, sizeof(_new), new) != 0)
-		return -EINVAL;
 
 	pfsMount=pfsFioGetMountedUnit(ff->unit);
 	if (pfsMount==0)	return -ENODEV;
@@ -1079,7 +1051,7 @@ int pfsFioRename(iomanX_iop_file_t *ff, const char *old, const char *new)
 		return -EACCES;
 	}
 #endif
-	parentOld=pfsInodeGetParent(pfsMount, NULL, _old, path1, &result);
+	parentOld=pfsInodeGetParent(pfsMount, NULL, old, path1, &result);
 	if (parentOld){
 		u32 nused=parentOld->nused;
 
@@ -1090,7 +1062,7 @@ int pfsFioRename(iomanX_iop_file_t *ff, const char *old, const char *new)
 
 		if ((iFileOld=pfsInodeGetFileInDir(parentOld, path1, &result))==NULL) goto exit;
 
-		if ((parentNew=pfsInodeGetParent(pfsMount, NULL, _new, path2, &result))==NULL) goto exit;
+		if ((parentNew=pfsInodeGetParent(pfsMount, NULL, new, path2, &result))==NULL) goto exit;
 
 		f=(iFileOld->u.inode->mode & FIO_S_IFMT) == FIO_S_IFDIR;
 
@@ -1221,18 +1193,14 @@ exit:
 
 int pfsFioChdir(iomanX_iop_file_t *f, const char *name)
 {
-	char _name[256];
 	pfs_mount_t *pfsMount;
 	pfs_cache_t *clink;
 	int result = 0;
 
-	if (pfsUTF8toGBK(_name, sizeof(_name), name) != 0)
-		return -EINVAL;
-
 	if(!(pfsMount = pfsFioGetMountedUnit(f->unit)))
 		return -ENODEV;
 
-	clink = pfsInodeGetFile(pfsMount, 0, _name, &result);
+	clink = pfsInodeGetFile(pfsMount, 0, name, &result);
 	if(clink != NULL) {
 		if((clink->u.inode->mode & FIO_S_IFMT) != FIO_S_IFDIR)
 			result = -ENOTDIR;
@@ -1365,48 +1333,42 @@ int pfsFioUmount(iomanX_iop_file_t *f, const char *fsname)
 
 int pfsFioSymlink(iomanX_iop_file_t *f, const char *old, const char *new)
 {
-	char _old[256], _new[256];
 	int rv;
 	pfs_mount_t *pfsMount;
 	int mode = 0x10000 | FIO_S_IFLNK | 0x1FF;
 
 	if(old==NULL || new==NULL)
 		return -ENOENT;
-	if (pfsUTF8toGBK(_old, sizeof(_old), old) != 0 || pfsUTF8toGBK(_new, sizeof(_new), new) != 0)
-		return -EINVAL;
 
 	if(!(pfsMount=pfsFioGetMountedUnit(f->unit)))
 		return -ENODEV;
 
-	rv = openFile(pfsMount, (pfs_file_slot_t *)_old, (const char *)_new, FIO_O_CREAT|FIO_O_WRONLY, mode);
+	rv = openFile(pfsMount, (pfs_file_slot_t *)old, (const char *)new, FIO_O_CREAT|FIO_O_WRONLY, mode);
 	SignalSema(pfsFioSema);
 	return rv;
 }
 
 int pfsFioReadlink(iomanX_iop_file_t *f, const char *path, char *buf, unsigned int buflen)
 {
-	char _path[256];
 	int rv=0;
 	pfs_mount_t *pfsMount;
 	pfs_cache_t *clink;
 
 	if((int)buflen < 0)
 		return -EINVAL;
-	if (pfsUTF8toGBK(_path, sizeof(_path), path) != 0)
-		return -EINVAL;
 	if(!(pfsMount=pfsFioGetMountedUnit(f->unit)))
 		return -ENODEV;
 
-	if((clink=pfsInodeGetFile(pfsMount, NULL, _path, &rv))!=NULL)
+	if((clink=pfsInodeGetFile(pfsMount, NULL, path, &rv))!=NULL)
 	{
 		if(!FIO_S_ISLNK(clink->u.inode->mode))
 			rv=-EINVAL;
 		else
 		{
-			if (pfsGBKtoUTF8(buf, buflen, (char *)&clink->u.inode->data[1]) != 0)
-				rv = -EINVAL;
-			else
-				rv = strlen(buf);
+			rv=strlen((char *)&clink->u.inode->data[1]);
+			if(buflen < (unsigned int)rv)
+				rv=(int)buflen;
+			memcpy(buf, &clink->u.inode->data[1], rv);
 		}
 		pfsCacheFree(clink);
 	}
