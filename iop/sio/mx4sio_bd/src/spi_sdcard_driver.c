@@ -675,10 +675,14 @@ int spisd_write(struct block_device *bd, uint64_t sector, const void *buffer, ui
     while (sectors_left > 0 && retries < MAX_RETRIES) {
 
         /* issue CMD25 to begin transfer */
-        results = spisd_write_multi_begin(sector, count);
+        results = spisd_write_multi_begin(sector, sectors_left);
         if (results != SPISD_RESULT_OK) {
             M_DEBUG("ERROR: failed to start multi-block write\n");
-            break;
+            if (spisd_recover() != SPISD_RESULT_OK)
+                break;
+
+            retries++;
+            continue;
         }
 
         /* start writing blocks */
@@ -688,6 +692,7 @@ int spisd_write(struct block_device *bd, uint64_t sector, const void *buffer, ui
         /* fail condition */
         if (sectors_left > 0) {
             write_buffer = (uint8_t *)write_buffer + (results * 512); /* update buffer for next attempt */
+            sector += results;
             M_DEBUG("ERROR: failed to write all sectors, wrote: %i\n", results);
         }
 
@@ -704,6 +709,9 @@ int spisd_write(struct block_device *bd, uint64_t sector, const void *buffer, ui
     sdcard.used = 1;
 
     mx_sio2_unlock(INTR_TX);
+
+    /* 恢复调用者的原始缓冲区内容 */
+    reverse_buffer((uint32_t *)buffer, ((count * SECTOR_SIZE) / 4));
 
     return count - sectors_left;
 }
