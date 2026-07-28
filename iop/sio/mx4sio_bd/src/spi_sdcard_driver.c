@@ -152,6 +152,9 @@ int spisd_init_card()
     uint8_t response = 0;
     uint8_t buffer[6];
 
+    if (!sdcard.baud)
+        sdcard.baud = SIO2_BAUD_DIV_FAST;
+
     /* set baud to (400kHZ) for init */
     mx_sio2_set_baud(SIO2_BAUD_DIV_SLOW);
 
@@ -213,8 +216,8 @@ int spisd_init_card()
             /* OCR -> CCS(bit30)  1: SDV2HC     0: SDV2 */
             sdcard.card_type = (buffer[0] & 0x40) ? CARD_TYPE_SDV2HC : CARD_TYPE_SDV2;
 
-            /* set baud to 25MHz */
-            mx_sio2_set_baud(SIO2_BAUD_DIV_FAST);
+            /* 切换到当前选定的传输速度 */
+            mx_sio2_set_baud(sdcard.baud);
 
         } else {
             M_DEBUG("ERROR: CMD8 check pattern failed, got 0x%x, 0x%x\n", buffer[2], buffer[3]);
@@ -263,9 +266,6 @@ int spisd_init_card()
             M_DEBUG("Card Type : CSD v1\r\n");
         }
 
-        /* set baud to 25MHz */
-        mx_sio2_set_baud(SIO2_BAUD_DIV_FAST);
-
         /* CRC disable */
         response = spisd_send_cmd(CMD59, 0);
 
@@ -280,6 +280,9 @@ int spisd_init_card()
             M_DEBUG("ERROR: CMD16 returned 0x%x, exp 0x0\n", response);
             return SPISD_RESULT_TIMEOUT;
         }
+
+        /* 切换到当前选定的传输速度 */
+        mx_sio2_set_baud(sdcard.baud);
 
     /* CMD8 response invalid */
     } else {
@@ -387,21 +390,31 @@ int spisd_get_card_info()
 int spisd_recover()
 {
     int rv;
-    /* flush 256 bytes */
-    for (int i = 0; i < 64; i++)
-        mx_sio2_rx_pio((void *)&rv, 4);
 
-    if (spisd_init_card() != SPISD_RESULT_OK) {
-        M_DEBUG("recovery failed to reinit card!\n");
-        return SPISD_RESULT_ERROR;
+    while (1) {
+        if (sdcard.baud == SIO2_BAUD_DIV_FAST)
+            sdcard.baud = SIO2_BAUD_DIV_MEDIUM;
+        else
+            sdcard.baud = SIO2_BAUD_DIV_COMPAT;
+
+        /* flush 256 bytes */
+        for (int i = 0; i < 64; i++)
+            mx_sio2_rx_pio((void *)&rv, 4);
+
+        if (spisd_init_card() != SPISD_RESULT_OK) {
+            M_DEBUG("recovery failed to reinit card!\n");
+            return SPISD_RESULT_ERROR;
+        }
+
+        if (spisd_get_card_info() == SPISD_RESULT_OK)
+            return SPISD_RESULT_OK;
+
+        if (sdcard.baud == SIO2_BAUD_DIV_COMPAT)
+            break;
     }
 
-    if (spisd_get_card_info() != SPISD_RESULT_OK) {
-        M_DEBUG("recovery failed to get card info!\n");
-        return SPISD_RESULT_ERROR;
-    }
-
-    return SPISD_RESULT_OK;
+    M_DEBUG("recovery failed to get card info!\n");
+    return SPISD_RESULT_ERROR;
 }
 
 /* read functions */

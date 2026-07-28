@@ -18,6 +18,8 @@
 /* baud dividers */
 #define SIO2_BAUD_DIV_SLOW 0x78
 #define SIO2_BAUD_DIV_FAST 0x2
+#define SIO2_BAUD_DIV_MEDIUM 0x4
+#define SIO2_BAUD_DIV_COMPAT 0x8
 
 /* SIO2 can only transfer 256 bytes at a time */
 #define SIO2_MAX_TRANSFER_SIZE 256

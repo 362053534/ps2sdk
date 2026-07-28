@@ -152,6 +152,7 @@ typedef struct spisd_t
     uint8_t csd[16];
     spisd_cid_t cid;
     card_type_t card_type;
+    uint8_t baud;
     uint8_t initialized;
     uint8_t used;
 }spisd_t;

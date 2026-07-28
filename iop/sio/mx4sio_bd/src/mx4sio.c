@@ -619,7 +619,11 @@ static void sd_detect()
         if (spisd_init_card() == SPISD_RESULT_OK) {
 
             /* get card capacity and attach to BDM */
-            if (spisd_get_card_info() == SPISD_RESULT_OK) {
+            results = spisd_get_card_info();
+            if (results != SPISD_RESULT_OK)
+                results = spisd_recover();
+
+            if (results == SPISD_RESULT_OK) {
                 bdm_connect_bd(&bd);
                 sdcard.initialized = 1;
             }
