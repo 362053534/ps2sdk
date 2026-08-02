@@ -41,7 +41,7 @@ SET(IOP_ASFLAGS_TARGET "-mcpu=r3000")
 INCLUDE_DIRECTORIES($ENV{PS2SDK}/iop/include $ENV{PS2SDK}/common/include $ENV{PS2SDK}/ports_iop/include)
 ADD_DEFINITIONS(-D_IOP -DPS2 -D__PS2__)
 
-SET(IOP_CFLAGS "${IOP_CFLAGS_TARGET} -O2 -G0 -fno-builtin" CACHE STRING "IOP C compiler flags" FORCE)
+SET(IOP_CFLAGS "${IOP_CFLAGS_TARGET} -O2 -G0 -fno-builtin -msoft-float -mno-explicit-relocs" CACHE STRING "IOP C compiler flags" FORCE)
 SET(IOP_LDFLAGS "${IOP_LDFLAGS_TARGET} -T$ENV{PS2SDK}/iop/startup/linkfile -L$ENV{PS2SDK}/iop/lib -L$ENV{PS2SDK}/ports_iop/lib -Wl,-zmax-page-size=128 -nostdlib -Os -Wall" CACHE STRING "IOP linker flags" FORCE)
 SET(IOP_ASFLAGS "${IOP_ASFLAGS_TARGET} -EL -G0" CACHE STRING "IOP assembler flags" FORCE)
 
