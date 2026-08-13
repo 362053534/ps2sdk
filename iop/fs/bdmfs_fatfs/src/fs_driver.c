@@ -631,13 +631,6 @@ static int get_frag_list(FIL *file, void *rdata, unsigned int rdatalen)
         iClusterCurrent = iClusterNext;
     } while(iClusterCurrent < file->obj.fs->n_fatent);
 
-    // 按文件真实大小裁剪最后一个碎片，避免把最后一簇的空闲尾部当作有效数据。
-    if (iFragCount > 0 && iFragCount <= iMaxFragments) {
-        u32 lastSectorCount = ((file->obj.objsize + FF_MAX_SS - 1) / FF_MAX_SS) & (file->obj.fs->csize - 1);
-        if (lastSectorCount)
-            f[iFragCount - 1].count -= file->obj.fs->csize - lastSectorCount;
-    }
-
     return iFragCount;
 }
 
