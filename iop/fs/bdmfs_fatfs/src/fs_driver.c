@@ -715,16 +715,6 @@ int fs_ioctl2(iop_file_t *fd, int cmd, void *data, unsigned int datalen, void *r
             }
             break;
         }
-        case USBMASS_IOCTL_GET_FILESYSTEM:
-            if (!rdata || rdatalen < sizeof(int))
-            {
-                ret = -EINVAL;
-                break;
-            }
-
-            *(int *)rdata = file->obj.fs->fs_type;
-            ret = 0;
-            break;
         default:
             break;
     }

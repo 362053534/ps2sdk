@@ -37,13 +37,6 @@ typedef struct bd_fragment {
 #define USBMASS_IOCTL_GET_FRAGLIST   0x0005
 /** Get the device number for the block device backing the mass partition */
 #define USBMASS_IOCTL_GET_DEVICE_NUMBER     0x0006
-/** 返回当前挂载的文件系统类型。 */
-#define USBMASS_IOCTL_GET_FILESYSTEM        0x0007
-
-#define USBMASS_FILESYSTEM_FAT12            1
-#define USBMASS_FILESYSTEM_FAT16            2
-#define USBMASS_FILESYSTEM_FAT32            3
-#define USBMASS_FILESYSTEM_EXFAT            4
 
 // DEVCTL function codes
 /** Issues the SCSI STOP UNIT command to the specified device. Use this to shut down devices properly. */
