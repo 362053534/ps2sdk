@@ -23,6 +23,7 @@ dma_command_t cmd;
 int sio2_event_flag;
 
 static int sd_detect_thread_id = -1;
+static volatile int sd_detect_thread_stop = 0;
 static sio2_transfer_data_t global_td;
 static uint8_t sio2_current_baud = SIO2_BAUD_DIV_SLOW;
 static uint32_t sio2_save_crtl;
@@ -689,14 +690,19 @@ static void sd_detect_thread(void *arg)
 
     M_PRINTF("card detection thread running\n");
 
-    while (1) {
+    while (!sd_detect_thread_stop) {
         DelayThread(1000 * 1000);
+
+        if (sd_detect_thread_stop)
+            break;
 
         /* try to detect card removal if it hasn't been used recently */
         if (sdcard.used == 0)
             sd_detect();
         sdcard.used = 0;
     }
+
+    ExitDeleteThread();
 }
 
 
@@ -826,6 +832,7 @@ int module_start(int argc, char *argv[])
     }
 
     /* Start thread */
+    sd_detect_thread_stop = 0;
     rv = StartThread(sd_detect_thread_id, NULL);
     if (rv < 0) {
         M_PRINTF("ERROR: StartThread returned %d\n", rv);
@@ -857,6 +864,8 @@ error1:
 
 int module_stop(int argc, char *argv[])
 {
+    iop_thread_info_t thread_info;
+
 #ifndef MINI_DRIVER
     int i;
 
@@ -868,7 +877,18 @@ int module_stop(int argc, char *argv[])
     (void)argv;
 #endif
 
-    DeleteThread(sd_detect_thread_id);
+    sd_detect_thread_stop = 1;
+    while (ReferThreadStatus(sd_detect_thread_id, &thread_info) >= 0)
+        DelayThread(1000);
+    sd_detect_thread_id = -1;
+
+    if (sdcard.initialized) {
+        mx_sio2_lock(INTR_NONE);
+        bdm_disconnect_bd(&bd);
+        sdcard.initialized = 0;
+        mx_sio2_unlock(INTR_NONE);
+    }
+
     sio2man_hook_deinit();
     DeleteEventFlag(sio2_event_flag);
 

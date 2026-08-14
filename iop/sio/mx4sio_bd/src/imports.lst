@@ -38,8 +38,10 @@ stdio_IMPORTS_end
 thbase_IMPORTS_start
 I_CreateThread
 I_StartThread
+I_ExitDeleteThread
 I_DeleteThread
 I_DelayThread
+I_ReferThreadStatus
 thbase_IMPORTS_end
 
 thevent_IMPORTS_start
