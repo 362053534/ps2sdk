@@ -753,8 +753,6 @@ static int fs_devctl(iop_file_t *fd, const char *name, int cmd, void *arg, unsig
     (void)name;
     (void)arg;
     (void)arglen;
-    (void)buf;
-    (void)buflen;
 
     _fs_lock();
 
@@ -768,6 +766,37 @@ static int fs_devctl(iop_file_t *fd, const char *name, int cmd, void *arg, unsig
         case USBMASS_DEVCTL_STOP_ALL: {
             fatfs_fs_driver_stop_single_bd(fd->unit);
             ret        = FR_OK;
+            break;
+        }
+        case USBMASS_DEVCTL_GET_BD_LIST: {
+            struct block_device *bdList[USBMASS_BD_MAX_DEVICES] = {0};
+            usbmass_bd_info_t *bdInfo = (usbmass_bd_info_t *)buf;
+            unsigned int maxCount = buflen / sizeof(usbmass_bd_info_t);
+            unsigned int i;
+
+            if (!buf || maxCount == 0) {
+                ret = -EINVAL;
+                break;
+            }
+
+            if (maxCount > USBMASS_BD_MAX_DEVICES)
+                maxCount = USBMASS_BD_MAX_DEVICES;
+
+            bdm_get_bd(bdList, USBMASS_BD_MAX_DEVICES);
+            ret = 0;
+            for (i = 0; i < USBMASS_BD_MAX_DEVICES && (unsigned int)ret < maxCount; i++) {
+                if (bdList[i]) {
+                    memset(&bdInfo[ret], 0, sizeof(usbmass_bd_info_t));
+                    if (bdList[i]->name)
+                        strncpy(bdInfo[ret].name, bdList[i]->name, USBMASS_BD_NAME_MAX - 1);
+                    bdInfo[ret].devNr = bdList[i]->devNr;
+                    bdInfo[ret].parNr = bdList[i]->parNr;
+                    bdInfo[ret].parId = bdList[i]->parId;
+                    bdInfo[ret].sectorSize = bdList[i]->sectorSize;
+                    bdInfo[ret].sectorCount = bdList[i]->sectorCount;
+                    ret++;
+                }
+            }
             break;
         }
         default: {

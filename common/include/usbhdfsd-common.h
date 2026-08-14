@@ -43,6 +43,21 @@ typedef struct bd_fragment {
 #define USBMASS_DEVCTL_STOP_UNIT 0x0000
 /** Issues the SCSI STOP UNIT command too all devices. Use this to shut down devices properly. */
 #define USBMASS_DEVCTL_STOP_ALL  0x0001
+/** 获取已注册到BDM的块设备列表。 */
+#define USBMASS_DEVCTL_GET_BD_LIST 0x0002
+
+#define USBMASS_BD_MAX_DEVICES 20
+#define USBMASS_BD_NAME_MAX    16
+
+typedef struct usbmass_bd_info {
+    char name[USBMASS_BD_NAME_MAX];
+    u32 devNr;
+    u32 parNr;
+    u8 parId;
+    u8 reserved[3];
+    u32 sectorSize;
+    u64 sectorCount;
+} __attribute__((packed)) usbmass_bd_info_t;
 
 // Device status bits.
 /** CONNected */
