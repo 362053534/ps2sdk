@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <sysclib.h>
+#include <thbase.h>
 #include <thsemap.h>
 
 #include "scsi.h"
@@ -128,7 +129,7 @@ static int scsi_warmup(struct block_device *bd)
     inquiry_data id;
     sense_data sd;
     read_capacity_data rcd;
-    int stat;
+    int retries, stat;
 
     M_DEBUG("%s\n", __func__);
 
@@ -145,6 +146,7 @@ static int scsi_warmup(struct block_device *bd)
     M_PRINTF("Product: %.16s\n", id.product);
     M_PRINTF("Revision: %.4s\n", id.revision);
 
+    retries = SCSI_MAX_RETRIES;
     while ((stat = scsi_cmd_test_unit_ready(bd)) != 0) {
         M_PRINTF("ERROR: scsi_cmd_test_unit_ready %d\n", stat);
 
@@ -164,6 +166,11 @@ static int scsi_warmup(struct block_device *bd)
                 }
             }
         }
+
+        if (--retries == 0)
+            return -1;
+
+        DelayThread(100000);
     }
 
     if ((stat = scsi_cmd_read_capacity(bd, &rcd, sizeof(read_capacity_data))) != 0) {
@@ -263,7 +270,7 @@ static int scsi_stop(struct block_device *bd)
 //
 // Public functions
 //
-void scsi_connect(struct scsi_interface *scsi)
+int scsi_connect(struct scsi_interface *scsi)
 {
     int i;
 
@@ -276,11 +283,17 @@ void scsi_connect(struct scsi_interface *scsi)
             bd->priv = scsi;
             bd->name = scsi->name;
             bd->devNr = scsi->devNr;
-            scsi_warmup(bd);
+            if (scsi_warmup(bd) != 0) {
+                M_PRINTF("ERROR: scsi_warmup failed\n");
+                bd->priv = NULL;
+                return -1;
+            }
             bdm_connect_bd(bd);
-            break;
+            return 0;
         }
     }
+
+    return -1;
 }
 
 void scsi_disconnect(struct scsi_interface *scsi)

@@ -21,6 +21,7 @@ static struct file_system *g_fs[MAX_CONNECTIONS];
 static bdm_cb g_cb       = NULL;
 static int bdm_event     = -1;
 static int bdm_thread_id = -1;
+static volatile u8 g_probe_state[BDM_PROBE_TYPE_COUNT];
 
 /* Event flag bits */
 #define BDM_EVENT_CB_MOUNT  0x01
@@ -145,6 +146,33 @@ void bdm_get_bd(struct block_device **pbd, unsigned int count)
         pbd[i] = g_mount[i].bd;
 }
 
+void bdm_set_probe_state(unsigned int type, unsigned int state)
+{
+    if (type < BDM_PROBE_TYPE_COUNT && state <= BDM_PROBE_STATE_ERROR)
+        g_probe_state[type] = state;
+}
+
+void bdm_get_probe_status(u32 *completed, u32 *present, u32 *error)
+{
+    unsigned int i;
+
+    *completed = 0;
+    *present = 0;
+    *error = 0;
+
+    for (i = 0; i < BDM_PROBE_TYPE_COUNT; i++) {
+        const u32 mask = 1 << i;
+        const u8 state = g_probe_state[i];
+
+        if (state != BDM_PROBE_STATE_PENDING)
+            *completed |= mask;
+        if (state == BDM_PROBE_STATE_PRESENT)
+            *present |= mask;
+        if (state == BDM_PROBE_STATE_ERROR)
+            *error |= mask;
+    }
+}
+
 static void bdm_try_mount(struct bdm_mounts *mount)
 {
     int i;
@@ -212,6 +240,9 @@ int bdm_init()
         g_mount[i].fs  = NULL;
         g_fs[i]        = NULL;
     }
+
+    for (i = 0; i < BDM_PROBE_TYPE_COUNT; i++)
+        g_probe_state[i] = BDM_PROBE_STATE_PENDING;
 
     EventFlagData.attr   = 0;
     EventFlagData.option = 0;

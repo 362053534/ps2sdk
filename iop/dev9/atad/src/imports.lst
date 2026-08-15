@@ -52,5 +52,6 @@ aifdev9_IMPORTS_end
 bdm_IMPORTS_start
 I_bdm_connect_bd
 I_bdm_disconnect_bd
+I_bdm_set_probe_state
 bdm_IMPORTS_end
 #endif

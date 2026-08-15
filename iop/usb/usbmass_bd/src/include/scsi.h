@@ -14,7 +14,7 @@ struct scsi_interface
 };
 
 extern int scsi_init(void);
-extern void scsi_connect(struct scsi_interface *scsi);
+extern int scsi_connect(struct scsi_interface *scsi);
 extern void scsi_disconnect(struct scsi_interface *scsi);
 
 #endif

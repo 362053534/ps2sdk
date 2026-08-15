@@ -1,4 +1,5 @@
 #include <intrman.h>
+#include <bdm.h>
 #include <loadcore.h>
 #include <stdio.h>
 #include <sysclib.h>
@@ -13,6 +14,9 @@
 
 // #define DEBUG  //comment out this line when not debugging
 #include "module_debug.h"
+
+#define SBP2_COMMAND_TIMEOUT 4
+#define ILINK_PROBE_MAX_RETRIES 20
 
 #define MAX_DEVICES 5
 static struct SBP2Device SBP2Devices[MAX_DEVICES];
@@ -29,6 +33,7 @@ static iop_thread_t threadData = {
 
 // static unsigned long int iLinkBufferOffset, iLinkTransferSize;
 static int sbp2_event_flag;
+static volatile int iLinkBusResetReceived;
 
 static void ieee1394_callback(int reason, unsigned long int offset, unsigned long int size);
 static void iLinkIntrCBHandlingThread(void *arg);
@@ -66,6 +71,8 @@ static void ieee1394_callback(int reason, unsigned long int offset, unsigned lon
     } else
 #endif
     if (reason == iLink_CB_BUS_RESET) {
+        iLinkBusResetReceived = 1;
+        bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_PENDING);
         SetEventFlag(sbp2_event_flag, BUS_RESET_COMPLETE);
     }
 #if 0
@@ -104,20 +111,50 @@ void init_ieee1394DiskDriver(void)
     }
 
     writeBuffer = malloc(XFER_BLOCK_SIZE);
+    if (!writeBuffer) {
+        bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_ERROR);
+        return;
+    }
 
     sbp2_event_flag = CreateEventFlag(&evfp);
+    if (sbp2_event_flag < 0) {
+        free(writeBuffer);
+        writeBuffer = NULL;
+        bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_ERROR);
+        return;
+    }
 
     M_DEBUG("Starting threads..\n");
 
     threadData.thread   = &iLinkIntrCBHandlingThread;
     iLinkIntrCBThreadID = CreateThread(&threadData);
-    StartThread(iLinkIntrCBThreadID, NULL);
+    if (iLinkIntrCBThreadID < 0) {
+        DeleteEventFlag(sbp2_event_flag);
+        free(writeBuffer);
+        writeBuffer = NULL;
+        bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_ERROR);
+        return;
+    }
+    if (StartThread(iLinkIntrCBThreadID, NULL) < 0) {
+        DeleteThread(iLinkIntrCBThreadID);
+        DeleteEventFlag(sbp2_event_flag);
+        free(writeBuffer);
+        writeBuffer = NULL;
+        bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_ERROR);
+        return;
+    }
 
     iLinkSetTrCallbackHandler(&ieee1394_callback);
+    iLinkBusResetReceived = 0;
 
     M_DEBUG("Threads created and started.\n");
 
     iLinkEnableSBus();
+
+    for (i = 0; i < ILINK_PROBE_MAX_RETRIES && !iLinkBusResetReceived; i++)
+        DelayThread(100000);
+    if (!iLinkBusResetReceived)
+        bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_ERROR);
 }
 
 static int initConfigureSBP2Device(struct SBP2Device *dev)
@@ -147,7 +184,10 @@ static int initConfigureSBP2Device(struct SBP2Device *dev)
         return -2;
     }
 
-    scsi_connect(&dev->scsi);
+    if (scsi_connect(&dev->scsi) != 0) {
+        M_DEBUG("Error initializing the SCSI device.\n");
+        return -3;
+    }
 
     M_DEBUG("Completed device initialization.\n");
 
@@ -235,7 +275,7 @@ static inline int initSBP2Disk(struct SBP2Device *dev)
 /* Hardware event handling threads. */
 static void iLinkIntrCBHandlingThread(void *arg)
 {
-    int nNodes, i, targetDeviceID, nodeID, result;
+    int nNodes, i, targetDeviceID, nodeID, result, deviceDetected;
     static const unsigned char PayloadSizeLookupTable[] = {
         7, /* S100; 2^(7+2)=512 */
         8, /* S200; 2^(8+2)=1024 */
@@ -259,6 +299,8 @@ static void iLinkIntrCBHandlingThread(void *arg)
 
         if ((nNodes = iLinkGetNodeCount()) < 0) {
             M_DEBUG("Critical error: Failure getting the number of nodes!\n"); /* Error. */
+            bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_ERROR);
+            continue;
         }
 
         M_PRINTF("BUS RESET DETECTED. Nodes: %d\n", nNodes);
@@ -267,6 +309,7 @@ static void iLinkIntrCBHandlingThread(void *arg)
         // DelayThread(500000); /* Give the devices on the bus some time to initialize themselves (The SBP-2 standard states that a maximum of 5 seconds may be given). */
 
         targetDeviceID = 0;
+        deviceDetected = 0;
 
         for (i = 0; i < nNodes; i++) {
             if (targetDeviceID >= MAX_DEVICES) {
@@ -283,6 +326,7 @@ static void iLinkIntrCBHandlingThread(void *arg)
             }
 
             M_PRINTF("Detected SBP-2 device.\n");
+            deviceDetected = 1;
 
             SBP2Devices[targetDeviceID].InitiatorNodeID = iLinkGetLocalNodeID();
 
@@ -331,6 +375,11 @@ static void iLinkIntrCBHandlingThread(void *arg)
                 M_DEBUG("Error allocating a transaction.\n");
             }
         }
+
+        if (targetDeviceID == 0)
+            bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, deviceDetected ? BDM_PROBE_STATE_ERROR : BDM_PROBE_STATE_ABSENT);
+        else
+            bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_PRESENT);
 
         for (; targetDeviceID < MAX_DEVICES; targetDeviceID++)
             SBP2Devices[targetDeviceID].IsConnected = 0; /* Mark the unused device slots as being unused. */
@@ -395,7 +444,7 @@ static int ieee1394_InitializeFetchAgent(struct SBP2Device *dev)
             return (-1);
     }
 
-    result = ieee1394_Sync();
+    result = ieee1394_Sync_withTimeout(SBP2_COMMAND_TIMEOUT);
     ieee1394_GetFetchAgentState(dev);
 
     free(dummy_ORB);
@@ -562,8 +611,9 @@ static int sbp2_queue_cmd(struct scsi_interface *scsi, const unsigned char *cmd,
             ((unsigned int *)writeBuffer)[i] = BSWAP32(((unsigned int *)data)[i]);
     }
 
-    ieee1394_SendCommandBlockORB(dev, &cdb);
-    ret = ieee1394_Sync();
+    if (ieee1394_SendCommandBlockORB(dev, &cdb) < 0)
+        return -1;
+    ret = ieee1394_Sync_withTimeout(SBP2_COMMAND_TIMEOUT);
 
     if (ret != 0) {
         M_DEBUG("sbp2_queue_cmd error %d\n", ret);

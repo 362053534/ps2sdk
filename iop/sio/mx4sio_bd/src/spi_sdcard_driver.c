@@ -180,7 +180,7 @@ int spisd_init_card()
 
     if (response != SPISD_R1_IDLE_FLAG) {
         M_DEBUG("ERROR: CMD0 returned 0x%x, exp: 0x1\n", response);
-        return SPISD_RESULT_TIMEOUT;
+        return SPISD_RESULT_NO_CARD;
     }
 
     /* send CMD8 with check pattern, store R3 response in buffer */

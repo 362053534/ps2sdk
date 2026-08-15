@@ -799,6 +799,18 @@ static int fs_devctl(iop_file_t *fd, const char *name, int cmd, void *arg, unsig
             }
             break;
         }
+        case USBMASS_DEVCTL_GET_PROBE_STATUS: {
+            usbmass_bd_probe_status_t *status = (usbmass_bd_probe_status_t *)buf;
+
+            if (!status || buflen < sizeof(usbmass_bd_probe_status_t)) {
+                ret = -EINVAL;
+                break;
+            }
+
+            bdm_get_probe_status(&status->completed, &status->present, &status->error);
+            ret = 0;
+            break;
+        }
         default: {
             ret = -ENXIO;
             break;

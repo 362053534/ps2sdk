@@ -12,6 +12,7 @@
 #include <usbd_macro.h>
 
 #include "scsi.h"
+#include <bdm.h>
 #include <usbhdfsd-common.h>
 
 // #define ASYNC
@@ -33,6 +34,9 @@
 #define USB_BLK_EP_OUT 1
 
 #define USB_XFER_MAX_RETRIES 8
+#define USB_INIT_MAX_RETRIES 3
+#define USB_SCSI_MAX_RETRIES 3
+#define USB_PROBE_MAX_RETRIES 20
 
 #define CBW_TAG 0x43425355
 #define CSW_TAG 0x53425355
@@ -47,6 +51,9 @@ typedef struct _mass_dev
     unsigned char status;
     unsigned char interfaceNumber; // interface number
     unsigned char interfaceAlt;    // interface alternate setting
+    unsigned char configurationRetries;
+    unsigned char interfaceRetries;
+    unsigned char scsiRetries;
     int ioSema;
     struct scsi_interface scsi;
 } mass_dev;
@@ -93,6 +100,7 @@ typedef struct _usb_transfer_callback_data
 #define NUM_DEVICES 2
 static mass_dev g_mass_device[NUM_DEVICES];
 static int usb_mass_update_sema;
+static int usb_probe_error;
 
 static void usb_callback(int resultCode, int bytes, void *arg);
 #ifndef ASYNC
@@ -634,18 +642,32 @@ static int usb_mass_connect(int devId)
 
     if (dev == NULL) {
         M_PRINTF("ERROR: Unable to allocate space!\n");
+        usb_probe_error = 1;
+        bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_ERROR);
         return 1;
     }
 
     /* only one mass device allowed */
     if (dev->devId != -1) {
         M_PRINTF("ERROR: Only one mass storage device allowed!\n");
+        usb_probe_error = 1;
+        bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_ERROR);
         return 1;
     }
+
+    for (i = 0; i < NUM_DEVICES; i++) {
+        if (g_mass_device[i].status & USBMASS_DEV_STAT_CONF)
+            break;
+    }
+    if (i == NUM_DEVICES)
+        bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_PENDING);
 
     dev->status  = 0;
     dev->bulkEpI = -1;
     dev->bulkEpO = -1;
+    dev->configurationRetries = 0;
+    dev->interfaceRetries = 0;
+    dev->scsiRetries = 0;
 
     /* open the config endpoint */
     dev->controlEp = sceUsbdOpenPipe(devId, NULL);
@@ -673,6 +695,8 @@ static int usb_mass_connect(int devId)
     if (dev->bulkEpI < 0 || dev->bulkEpO < 0) {
         usb_mass_release(dev);
         M_PRINTF("ERROR: connect failed: not enough bulk endpoints!\n");
+        usb_probe_error = 1;
+        bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_ERROR);
         return -1;
     }
 
@@ -682,6 +706,8 @@ static int usb_mass_connect(int devId)
     SemaData.attr    = 0;
     if ((dev->ioSema = CreateSema(&SemaData)) < 0) {
         M_PRINTF("ERROR: Failed to allocate I/O semaphore\n");
+        usb_probe_error = 1;
+        bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_ERROR);
         return -1;
     }
 
@@ -735,6 +761,22 @@ static int usb_mass_disconnect(int devId)
         scsi_disconnect(&dev->scsi);
     }
 
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (g_mass_device[i].status & USBMASS_DEV_STAT_CONF) {
+            bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_PRESENT);
+            return 0;
+        }
+    }
+
+    for (int i = 0; i < NUM_DEVICES; i++) {
+        if (g_mass_device[i].status & USBMASS_DEV_STAT_CONN) {
+            bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_PENDING);
+            return 0;
+        }
+    }
+
+    bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_ABSENT);
+
     return 0;
 }
 
@@ -758,7 +800,8 @@ static void usb_mass_update(void *arg)
             new_devs_count = 0;
             for (i = 0; i < NUM_DEVICES; i += 1) {
                 mass_dev *dev = &g_mass_device[i];
-                if (dev->devId != -1 && (dev->status & USBMASS_DEV_STAT_CONN) && !(dev->status & USBMASS_DEV_STAT_CONF)) {
+                if (dev->devId != -1 && (dev->status & USBMASS_DEV_STAT_CONN) && !(dev->status & USBMASS_DEV_STAT_CONF) &&
+                    dev->configurationRetries < USB_INIT_MAX_RETRIES && dev->interfaceRetries < USB_INIT_MAX_RETRIES && dev->scsiRetries < USB_SCSI_MAX_RETRIES) {
                     new_devs[new_devs_count] = dev;
                     new_devs_count += 1;
                 }
@@ -774,9 +817,15 @@ static void usb_mass_update(void *arg)
 
                 if ((ret = usb_set_configuration(dev, dev->configId)) != USB_RC_OK) {
                     M_PRINTF("ERROR: sending set_configuration %d\n", ret);
-                    usb_mass_release(dev);
+                    if (++dev->configurationRetries < USB_INIT_MAX_RETRIES) {
+                        DelayThread(1000000);
+                        SignalSema(usb_mass_update_sema);
+                    } else {
+                        bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_ERROR);
+                    }
                     continue;
                 }
+                dev->configurationRetries = 0;
 
                 if ((ret = usb_set_interface(dev, dev->interfaceNumber, dev->interfaceAlt)) != USB_RC_OK) {
                     M_PRINTF("ERROR: sending set_interface %d\n", ret);
@@ -786,10 +835,16 @@ static void usb_mass_update(void *arg)
                         usb_bulk_clear_halt(dev, USB_BLK_EP_IN);
                         usb_bulk_clear_halt(dev, USB_BLK_EP_OUT);
                     } else {
-                        usb_mass_release(dev);
+                        if (++dev->interfaceRetries < USB_INIT_MAX_RETRIES) {
+                            DelayThread(1000000);
+                            SignalSema(usb_mass_update_sema);
+                        } else {
+                            bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_ERROR);
+                        }
                         continue;
                     }
                 }
+                dev->interfaceRetries = 0;
 
                 sceUsbdGetDeviceLocation(dev->devId, path);
                 if (path[0] == 2)
@@ -800,7 +855,18 @@ static void usb_mass_update(void *arg)
                     dev->scsi.devNr = 2; // hub?
 
                 dev->status |= USBMASS_DEV_STAT_CONF;
-                scsi_connect(&dev->scsi);
+                if (scsi_connect(&dev->scsi) != 0) {
+                    dev->status &= ~USBMASS_DEV_STAT_CONF;
+                    if (++dev->scsiRetries < USB_SCSI_MAX_RETRIES) {
+                        DelayThread(1000000);
+                        SignalSema(usb_mass_update_sema);
+                    } else {
+                        bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_ERROR);
+                    }
+                    continue;
+                }
+                dev->scsiRetries = 0;
+                bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_PRESENT);
 
                 // This is the same wait amount as done in fat_getData in usbhdfsd.
                 // This is a workaround to avoid incorrect initialization when attaching multiple drives at the same time.
@@ -818,6 +884,8 @@ int usb_mass_init(void)
     int i;
 
     M_DEBUG("%s\n", __func__);
+
+    usb_probe_error = 0;
 
     for (i = 0; i < NUM_DEVICES; ++i) {
         g_mass_device[i].status = 0;
@@ -870,6 +938,18 @@ int usb_mass_init(void)
         DeleteThread(ret);
         return -1;
     }
+
+    for (ret = 0; ret <= USB_PROBE_MAX_RETRIES; ret++) {
+        for (i = 0; i < NUM_DEVICES; i++) {
+            if (g_mass_device[i].status & USBMASS_DEV_STAT_CONN)
+                break;
+        }
+        if (i < NUM_DEVICES || ret == USB_PROBE_MAX_RETRIES)
+            break;
+        DelayThread(100000);
+    }
+    if (i == NUM_DEVICES)
+        bdm_set_probe_state(BDM_PROBE_TYPE_USB, usb_probe_error ? BDM_PROBE_STATE_ERROR : BDM_PROBE_STATE_ABSENT);
 
     return 0;
 }

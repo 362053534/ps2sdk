@@ -45,6 +45,13 @@ typedef struct bd_fragment {
 #define USBMASS_DEVCTL_STOP_ALL  0x0001
 /** 获取已注册到BDM的块设备列表。 */
 #define USBMASS_DEVCTL_GET_BD_LIST 0x0002
+/** 获取BDM设备探测状态。 */
+#define USBMASS_DEVCTL_GET_PROBE_STATUS 0x0003
+
+#define USBMASS_BD_TYPE_USB   0x01
+#define USBMASS_BD_TYPE_ILINK 0x02
+#define USBMASS_BD_TYPE_SDC   0x04
+#define USBMASS_BD_TYPE_ATA   0x08
 
 #define USBMASS_BD_MAX_DEVICES 20
 #define USBMASS_BD_NAME_MAX    16
@@ -58,6 +65,12 @@ typedef struct usbmass_bd_info {
     u32 sectorSize;
     u64 sectorCount;
 } __attribute__((packed)) usbmass_bd_info_t;
+
+typedef struct usbmass_bd_probe_status {
+    u32 completed;
+    u32 present;
+    u32 error;
+} usbmass_bd_probe_status_t;
 
 // Device status bits.
 /** CONNected */

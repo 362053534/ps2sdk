@@ -4,6 +4,7 @@
 
 #include "sbp2_disk.h"
 #include "scsi.h"
+#include <bdm.h>
 #include <irx.h>
 #include <loadcore.h>
 #include <stdio.h>
@@ -19,9 +20,12 @@ int _start(int argc, char *argv[])
 
     M_PRINTF("IEEE1394 Driver v%d.%d\n", MAJOR_VER, MINOR_VER);
 
+    bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_PENDING);
+
     // initialize the SCSI driver
     if (scsi_init() != 0) {
         M_PRINTF("ERROR: initializing SCSI driver!\n");
+        bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_ERROR);
         return MODULE_NO_RESIDENT_END;
     }
 

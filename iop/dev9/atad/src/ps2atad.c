@@ -64,6 +64,9 @@ IRX_ID(MODNAME, 2, 7);
 
 #define ATA_EV_TIMEOUT  1
 #define ATA_EV_COMPLETE 2
+#ifdef ATA_ENABLE_BDM
+#define ATA_INIT_MAX_RETRIES 3
+#endif
 
 static int ata_devinfo_init = 0;
 static int ata_evflg        = -1;
@@ -272,17 +275,27 @@ int _start(int argc, char *argv[])
     USE_AIF_REGS;
 #endif
     int res;
+#ifdef ATA_ENABLE_BDM
+    int retries;
+#endif
 
     (void)argc;
     (void)argv;
 
     printf(BANNER, VERSION);
 
+#ifdef ATA_ENABLE_BDM
+    bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_PENDING);
+#endif
+
     res = MODULE_NO_RESIDENT_END;
 
 #ifdef ATA_USE_DEV9
     if (!(SPD_REG16(SPD_R_REV_3) & SPD_CAPS_ATA) || !(SPD_REG16(SPD_R_REV_8) & 0x02)) {
         M_PRINTF("HDD is not connected, exiting.\n");
+#ifdef ATA_ENABLE_BDM
+        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ABSENT);
+#endif
         goto out;
     }
 
@@ -303,6 +316,9 @@ int _start(int argc, char *argv[])
 #ifdef ATA_USE_AIFDEV9
     if (!aifIsDetected()) {
         M_PRINTF("AIF HDD: controller not found.\n");
+#ifdef ATA_ENABLE_BDM
+        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ABSENT);
+#endif
         goto out;
     }
     aif_regs[AIF_ATA_TCFG] = 0; // Clear ATA timing configuration.
@@ -325,6 +341,9 @@ int _start(int argc, char *argv[])
 
     if ((ata_evflg = ata_create_event_flag()) < 0) {
         M_PRINTF("Couldn't create event flag, exiting.\n");
+#ifdef ATA_ENABLE_BDM
+        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ERROR);
+#endif
         goto out;
     }
 
@@ -372,12 +391,21 @@ int _start(int argc, char *argv[])
         }
     }
 
-    sceAtaInit(0);
-    sceAtaInit(1);
+    for (retries = 0; retries < ATA_INIT_MAX_RETRIES; retries++) {
+        if (sceAtaInit(0))
+            break;
+        if (retries < ATA_INIT_MAX_RETRIES - 1)
+            DelayThread(1000000);
+    }
+    if (retries < ATA_INIT_MAX_RETRIES)
+        sceAtaInit(1);
 #endif
 
     if (RegisterLibraryEntries(&_exp_atad) != 0) {
         M_PRINTF("Library is already registered, exiting.\n");
+#ifdef ATA_ENABLE_BDM
+        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ERROR);
+#endif
         goto out;
     }
 
@@ -1321,6 +1349,9 @@ static int ata_init_devices(ata_devinfo_t *devinfo)
 #endif
     int i, res;
     u32 total_sectors_nonlba48, total_sectors_lba48;
+#ifdef ATA_ENABLE_BDM
+    int deviceRegistered = 0;
+#endif
 
     if ((res = sceAtaSoftReset()) != 0)
         return res;
@@ -1329,9 +1360,11 @@ static int ata_init_devices(ata_devinfo_t *devinfo)
     if (!devinfo[0].exists) {
         M_PRINTF("Error: Unable to detect HDD 0.\n");
         devinfo[1].exists = 0;
+#ifdef ATA_ENABLE_BDM
+        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ABSENT);
+#endif
         return ATA_RES_ERR_NODEV; // Returns 0 in v1.04.
     }
-
     /* If there is a device 1, grab it's info too.  */
     if ((res = ata_device_select(1)) != 0)
         return res;
@@ -1435,8 +1468,16 @@ static int ata_init_devices(ata_devinfo_t *devinfo)
 #ifdef ATA_ENABLE_BDM
         g_ata_bd[i].sectorCount = devinfo[i].total_sectors_lba48;
         bdm_connect_bd(&g_ata_bd[i]);
+        deviceRegistered = 1;
 #endif
     }
+#ifdef ATA_ENABLE_BDM
+    if (!deviceRegistered) {
+        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ERROR);
+        return ATA_RES_ERR_IO;
+    }
+    bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_PRESENT);
+#endif
     return 0;
 }
 
@@ -1444,9 +1485,19 @@ static int ata_init_devices(ata_devinfo_t *devinfo)
 ata_devinfo_t *sceAtaInit(int device)
 {
     if (!ata_devinfo_init) {
+        int res;
+
+#ifdef ATA_ENABLE_BDM
+        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_PENDING);
+#endif
         ata_devinfo_init = 1;
-        if (ata_bus_reset() || ata_init_devices(atad_devinfo))
+        if ((res = ata_bus_reset()) || (res = ata_init_devices(atad_devinfo))) {
+#ifdef ATA_ENABLE_BDM
+            ata_devinfo_init = 0;
+            bdm_set_probe_state(BDM_PROBE_TYPE_ATA, res == ATA_RES_ERR_NODEV ? BDM_PROBE_STATE_ABSENT : BDM_PROBE_STATE_ERROR);
+#endif
             return NULL;
+        }
     }
 
     return &atad_devinfo[device];

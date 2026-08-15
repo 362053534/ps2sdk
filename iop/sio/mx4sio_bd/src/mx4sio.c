@@ -16,6 +16,8 @@
 
 #include "module_debug.h"
 
+#define SD_INIT_MAX_RETRIES 4
+
 IRX_ID("mx4sio", 1, 2);
 
 /* globals */
@@ -24,6 +26,7 @@ int sio2_event_flag;
 
 static int sd_detect_thread_id = -1;
 static volatile int sd_detect_thread_stop = 0;
+static int sd_init_retries;
 static sio2_transfer_data_t global_td;
 static uint8_t sio2_current_baud = SIO2_BAUD_DIV_SLOW;
 static uint32_t sio2_save_crtl;
@@ -652,8 +655,8 @@ static void sd_detect()
     if (sdcard.initialized == 0) {
         M_PRINTF("Trying to init card\n");
         /* bring card up from identification mode to data-transfer mode */
-        if (spisd_init_card() == SPISD_RESULT_OK) {
-
+        results = spisd_init_card();
+        if (results == SPISD_RESULT_OK) {
             /* get card capacity and attach to BDM */
             results = spisd_get_card_info();
             if (results != SPISD_RESULT_OK)
@@ -662,6 +665,20 @@ static void sd_detect()
             if (results == SPISD_RESULT_OK) {
                 bdm_connect_bd(&bd);
                 sdcard.initialized = 1;
+                sd_init_retries = 0;
+                bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_PRESENT);
+            }
+        }
+
+        if (sdcard.initialized == 0) {
+            if (results == SPISD_RESULT_NO_CARD) {
+                sd_init_retries = 0;
+                bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_ABSENT);
+            } else if (sd_init_retries < SD_INIT_MAX_RETRIES) {
+                if (++sd_init_retries == SD_INIT_MAX_RETRIES)
+                    bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_ERROR);
+                else
+                    bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_PENDING);
             }
         }
     } else {
@@ -677,6 +694,7 @@ static void sd_detect()
                 M_DEBUG("Recovery failed, disconnecting from bdm.\n");
                 bdm_disconnect_bd(&bd);
                 sdcard.initialized = 0;
+                bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_ABSENT);
             }
         }
     }
@@ -775,6 +793,9 @@ int module_start(int argc, char *argv[])
     iop_thread_t thread;
     int rv;
 
+    bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_PENDING);
+    sd_init_retries = 0;
+
 #ifndef MINI_DRIVER
     int i;
 
@@ -859,6 +880,7 @@ error3:
 error2:
     DeleteEventFlag(sio2_event_flag);
 error1:
+    bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_ERROR);
     return MODULE_NO_RESIDENT_END;
 }
 
@@ -888,6 +910,8 @@ int module_stop(int argc, char *argv[])
         sdcard.initialized = 0;
         mx_sio2_unlock(INTR_NONE);
     }
+
+    bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_ABSENT);
 
     sio2man_hook_deinit();
     DeleteEventFlag(sio2_event_flag);

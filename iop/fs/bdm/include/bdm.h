@@ -56,6 +56,17 @@ struct file_system
 
 typedef void (*bdm_cb)(int event);
 
+#define BDM_PROBE_TYPE_USB   0
+#define BDM_PROBE_TYPE_ILINK 1
+#define BDM_PROBE_TYPE_SDC   2
+#define BDM_PROBE_TYPE_ATA   3
+#define BDM_PROBE_TYPE_COUNT 4
+
+#define BDM_PROBE_STATE_PENDING 0
+#define BDM_PROBE_STATE_ABSENT  1
+#define BDM_PROBE_STATE_PRESENT 2
+#define BDM_PROBE_STATE_ERROR   3
+
 // Exported functions
 extern void bdm_connect_bd(struct block_device *bd);
 extern void bdm_disconnect_bd(struct block_device *bd);
@@ -63,6 +74,8 @@ extern void bdm_connect_fs(struct file_system *fs);
 extern void bdm_disconnect_fs(struct file_system *fs);
 extern void bdm_get_bd(struct block_device **pbd, unsigned int count);
 extern void bdm_RegisterCallback(bdm_cb cb);
+extern void bdm_set_probe_state(unsigned int type, unsigned int state);
+extern void bdm_get_probe_status(u32 *completed, u32 *present, u32 *error);
 
 #define bdm_IMPORTS_start DECLARE_IMPORT_TABLE(bdm, 1, 1)
 #define bdm_IMPORTS_end   END_IMPORT_TABLE
@@ -73,5 +86,7 @@ extern void bdm_RegisterCallback(bdm_cb cb);
 #define I_bdm_disconnect_fs    DECLARE_IMPORT(7, bdm_disconnect_fs)
 #define I_bdm_get_bd           DECLARE_IMPORT(8, bdm_get_bd)
 #define I_bdm_RegisterCallback DECLARE_IMPORT(9, bdm_RegisterCallback)
+#define I_bdm_set_probe_state  DECLARE_IMPORT(10, bdm_set_probe_state)
+#define I_bdm_get_probe_status DECLARE_IMPORT(11, bdm_get_probe_status)
 
 #endif
