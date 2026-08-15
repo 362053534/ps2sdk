@@ -160,8 +160,13 @@ void processDoneQueue_IsoTd(HcIsoTD *arg)
         if (listPos->correspEndpoint->correspDevice) {
             if (listPos->callbackProc)
                 listPos->callbackProc(listPos);
-        } else
-            freeIoRequest(listPos);
+        } else {
+            listPos->resultCode = USB_RC_ABORTED;
+            if (listPos->callbackProc)
+                listPos->callbackProc(listPos);
+            else
+                freeIoRequest(listPos);
+        }
         listPos = listNext;
     }
     checkTdQueue(ISOTD_QUEUE);
@@ -248,8 +253,13 @@ void processDoneQueue_GenTd(HcTD *arg)
             if (dev) {
                 if (pos->callbackProc)
                     pos->callbackProc(pos);
-            } else
-                freeIoRequest(pos);
+            } else {
+                pos->resultCode = USB_RC_ABORTED;
+                if (pos->callbackProc)
+                    pos->callbackProc(pos);
+                else
+                    freeIoRequest(pos);
+            }
             pos = next;
         }
         checkTdQueue(GENTD_QUEUE);

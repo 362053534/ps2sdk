@@ -230,9 +230,16 @@ void killEndpoint(Endpoint *ep)
         for (i = 0; i < usbConfig.maxIsoTransfDesc; i++) {
             req = memPool.hcIsoTdToIoReqLUT[i];
             if (req && (req->correspEndpoint == ep)) {
-                freeIoRequest(req);
                 memPool.hcIsoTdToIoReqLUT[i] = NULL;
                 freeIsoTd(memPool.hcIsoTdBuf + i);
+                if (req->busyFlag) {
+                    req->busyFlag   = 0;
+                    req->resultCode = USB_RC_ABORTED;
+                    if (req->callbackProc)
+                        req->callbackProc(req);
+                    else
+                        freeIoRequest(req);
+                }
             }
         }
         freeIsoTd((HcIsoTD *)hcEd->tdTail);
@@ -240,9 +247,16 @@ void killEndpoint(Endpoint *ep)
         for (i = 0; i < usbConfig.maxTransfDesc; i++) {
             req = memPool.hcTdToIoReqLUT[i];
             if (req && (req->correspEndpoint == ep)) {
-                freeIoRequest(req);
                 memPool.hcTdToIoReqLUT[i] = NULL;
                 freeTd(memPool.hcTdBuf + i);
+                if (req->busyFlag) {
+                    req->busyFlag   = 0;
+                    req->resultCode = USB_RC_ABORTED;
+                    if (req->callbackProc)
+                        req->callbackProc(req);
+                    else
+                        freeIoRequest(req);
+                }
             }
         }
         freeTd(hcEd->tdTail);
@@ -261,7 +275,12 @@ void killEndpoint(Endpoint *ep)
         else
             ep->ioReqListStart = req->next;
 
-        freeIoRequest(req);
+        req->busyFlag   = 0;
+        req->resultCode = USB_RC_ABORTED;
+        if (req->callbackProc)
+            req->callbackProc(req);
+        else
+            freeIoRequest(req);
     }
     removeEndpointFromQueue(ep);
 
