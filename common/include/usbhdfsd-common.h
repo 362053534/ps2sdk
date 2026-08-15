@@ -47,6 +47,8 @@ typedef struct bd_fragment {
 #define USBMASS_DEVCTL_GET_BD_LIST 0x0002
 /** 获取BDM设备探测状态。 */
 #define USBMASS_DEVCTL_GET_PROBE_STATUS 0x0003
+/** 获取mass槽位对应的挂载设备信息。 */
+#define USBMASS_DEVCTL_GET_MOUNT_INFO 0x0004
 
 #define USBMASS_BD_TYPE_USB   0x01
 #define USBMASS_BD_TYPE_ILINK 0x02
@@ -65,6 +67,12 @@ typedef struct usbmass_bd_info {
     u32 sectorSize;
     u64 sectorCount;
 } __attribute__((packed)) usbmass_bd_info_t;
+
+typedef struct usbmass_mount_info {
+    u32 mounted;
+    u32 reserved;
+    usbmass_bd_info_t device;
+} __attribute__((packed)) usbmass_mount_info_t;
 
 typedef struct usbmass_bd_probe_status {
     u32 completed;

@@ -850,6 +850,37 @@ static int fs_devctl(iop_file_t *fd, const char *name, int cmd, void *arg, unsig
             ret = 0;
             break;
         }
+        case USBMASS_DEVCTL_GET_MOUNT_INFO: {
+            usbmass_mount_info_t *mountInfo = (usbmass_mount_info_t *)buf;
+            unsigned int maxCount = buflen / sizeof(usbmass_mount_info_t);
+            unsigned int i;
+
+            if (!buf || maxCount == 0) {
+                ret = -EINVAL;
+                break;
+            }
+
+            if (maxCount > FATFS_FS_DRIVER_MOUNT_INFO_MAX)
+                maxCount = FATFS_FS_DRIVER_MOUNT_INFO_MAX;
+
+            for (i = 0; i < maxCount; i++) {
+                struct block_device *mounted_bd = fs_driver_mount_info[i].mounted_bd;
+
+                memset(&mountInfo[i], 0, sizeof(usbmass_mount_info_t));
+                if (mounted_bd) {
+                    mountInfo[i].mounted = 1;
+                    if (mounted_bd->name)
+                        strncpy(mountInfo[i].device.name, mounted_bd->name, USBMASS_BD_NAME_MAX - 1);
+                    mountInfo[i].device.devNr = mounted_bd->devNr;
+                    mountInfo[i].device.parNr = mounted_bd->parNr;
+                    mountInfo[i].device.parId = mounted_bd->parId;
+                    mountInfo[i].device.sectorSize = mounted_bd->sectorSize;
+                    mountInfo[i].device.sectorCount = mounted_bd->sectorCount;
+                }
+            }
+            ret = maxCount;
+            break;
+        }
         default: {
             ret = -ENXIO;
             break;
