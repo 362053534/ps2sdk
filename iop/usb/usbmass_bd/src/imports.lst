@@ -26,7 +26,6 @@ thsemap_IMPORTS_start
 I_CreateSema
 I_SignalSema
 I_WaitSema
-I_DeleteSema
 I_PollSema
 thsemap_IMPORTS_end
 
