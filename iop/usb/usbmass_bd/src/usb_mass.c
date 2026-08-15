@@ -37,8 +37,6 @@
 #define USB_INIT_MAX_RETRIES 3
 #define USB_SCSI_MAX_RETRIES 3
 #define USB_PROBE_MAX_RETRIES 20
-#define USB_CALLBACK_TIMEOUT 5000000
-#define USB_CALLBACK_POLL_INTERVAL 10000
 
 #define CBW_TAG 0x43425355
 #define CSW_TAG 0x53425355
@@ -111,32 +109,6 @@ static void usb_transfer_callback(int resultCode, int bytes, void *arg);
 #endif
 static void usb_mass_release(mass_dev *dev);
 
-static int usb_wait_callback(mass_dev *dev, int pipe, int *returnCode)
-{
-    int elapsed;
-
-    for (elapsed = 0; elapsed < USB_CALLBACK_TIMEOUT; elapsed += USB_CALLBACK_POLL_INTERVAL) {
-        if (PollSema(dev->ioSema) == 0)
-            return *returnCode;
-        DelayThread(USB_CALLBACK_POLL_INTERVAL);
-    }
-
-    M_PRINTF("ERROR: USB callback timeout on pipe %d.\n", pipe);
-    if (pipe >= 0) {
-        sceUsbdClosePipe(pipe);
-        if (pipe == dev->controlEp)
-            dev->controlEp = -1;
-        else if (pipe == dev->bulkEpI)
-            dev->bulkEpI = -1;
-        else if (pipe == dev->bulkEpO)
-            dev->bulkEpO = -1;
-    }
-    WaitSema(dev->ioSema);
-    dev->status |= USBMASS_DEV_STAT_ERR;
-
-    return USB_RC_ABORTED;
-}
-
 static void usb_callback(int resultCode, int bytes, void *arg)
 {
     usb_callback_data *data = (usb_callback_data *)arg;
@@ -195,8 +167,10 @@ static int usb_set_configuration(mass_dev *dev, int configNumber)
     M_DEBUG("setting configuration controlEp=%i, confNum=%i \n", dev->controlEp, configNumber);
     ret = sceUsbdSetConfiguration(dev->controlEp, configNumber, usb_callback, (void *)&cb_data);
 
-    if (ret == USB_RC_OK)
-        ret = usb_wait_callback(dev, dev->controlEp, &cb_data.returnCode);
+    if (ret == USB_RC_OK) {
+        WaitSema(cb_data.sema);
+        ret = cb_data.returnCode;
+    }
 
     return ret;
 }
@@ -211,8 +185,10 @@ static int usb_set_interface(mass_dev *dev, int interface, int altSetting)
     M_DEBUG("setting interface controlEp=%i, interface=%i altSetting=%i\n", dev->controlEp, interface, altSetting);
     ret = sceUsbdSetInterface(dev->controlEp, interface, altSetting, usb_callback, (void *)&cb_data);
 
-    if (ret == USB_RC_OK)
-        ret = usb_wait_callback(dev, dev->controlEp, &cb_data.returnCode);
+    if (ret == USB_RC_OK) {
+        WaitSema(cb_data.sema);
+        ret = cb_data.returnCode;
+    }
 
     return ret;
 }
@@ -231,8 +207,10 @@ static int usb_bulk_clear_halt(mass_dev *dev, int endpoint)
         usb_callback,
         (void *)&cb_data);
 
-    if (ret == USB_RC_OK)
-        ret = usb_wait_callback(dev, dev->controlEp, &cb_data.returnCode);
+    if (ret == USB_RC_OK) {
+        WaitSema(cb_data.sema);
+        ret = cb_data.returnCode;
+    }
     if (ret != USB_RC_OK) {
         M_DEBUG("ERROR: sending clear halt %d\n", ret);
     }
@@ -260,8 +238,10 @@ static void usb_bulk_reset(mass_dev *dev, int mode)
         usb_callback,
         (void *)&cb_data);
 
-    if (ret == USB_RC_OK)
-        ret = usb_wait_callback(dev, dev->controlEp, &cb_data.returnCode);
+    if (ret == USB_RC_OK) {
+        WaitSema(cb_data.sema);
+        ret = cb_data.returnCode;
+    }
     if (ret == USB_RC_OK) {
         // clear bulk-in endpoint
         if (mode & 0x01)
@@ -298,7 +278,8 @@ static int usb_bulk_status(mass_dev *dev, csw_packet *csw, unsigned int tag)
         (void *)&cb_data);
 
     if (ret == USB_RC_OK) {
-        ret = usb_wait_callback(dev, dev->bulkEpI, &cb_data.returnCode);
+        WaitSema(cb_data.sema);
+        ret = cb_data.returnCode;
 
 #ifdef DEBUG
         if (cb_data.returnSize != 13)
@@ -365,8 +346,10 @@ static int usb_bulk_get_max_lun(struct scsi_interface *scsi)
         usb_callback,
         (void *)&cb_data);
 
-    if (ret == USB_RC_OK)
-        ret = usb_wait_callback(dev, dev->controlEp, &cb_data.returnCode);
+    if (ret == USB_RC_OK) {
+        WaitSema(cb_data.sema);
+        ret = cb_data.returnCode;
+    }
     if (ret == USB_RC_OK) {
         ret = max_lun;
     } else {
@@ -416,8 +399,10 @@ static int usb_bulk_command(mass_dev *dev, cbw_packet *packet)
         usb_callback,
         (void *)&cb_data);
 
-    if (ret == USB_RC_OK)
-        ret = usb_wait_callback(dev, dev->bulkEpO, &cb_data.returnCode);
+    if (ret == USB_RC_OK) {
+        WaitSema(cb_data.sema);
+        ret = cb_data.returnCode;
+    }
     if (ret != USB_RC_OK) {
         M_DEBUG("ERROR: sending bulk command %d. Calling reset recovery.\n", ret);
         usb_bulk_reset(dev, 3);
@@ -438,8 +423,10 @@ static int usb_bulk_transfer(mass_dev *dev, int direction, void *buffer, unsigne
     cb_data.remaining  = transferSize;
 
     ret = perform_bulk_transfer(&cb_data);
-    if (ret == USB_RC_OK)
-        ret = usb_wait_callback(dev, cb_data.pipe, &cb_data.returnCode);
+    if (ret == USB_RC_OK) {
+        WaitSema(cb_data.sema);
+        ret = cb_data.returnCode;
+    }
 
     if (ret != USB_RC_OK) {
         M_DEBUG("ERROR: bulk data transfer %d. Clearing HALT state.\n", ret);
@@ -540,9 +527,7 @@ int usb_queue_cmd(struct scsi_interface *scsi, const unsigned char *cmd, unsigne
         return -EIO;
 
     // Wait for SCSI command to finish
-    result = usb_wait_callback(dev, dev->bulkEpI, &ucmd.returnCode);
-    if (result != USB_RC_OK)
-        return -EIO;
+    WaitSema(dev->ioSema);
     if (ucmd.returnCode != USB_RC_OK)
         return -EIO;
 
