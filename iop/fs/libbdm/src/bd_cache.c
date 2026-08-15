@@ -5,16 +5,22 @@
 //#define DEBUG  //comment out this line when not debugging
 #include "module_debug.h"
 
-#define SECTORS_PER_BLOCK     8 //  8 * 512b =   4KiB
-#define BLOCK_COUNT          32 // 32 * 4KiB = 128KiB
-#define BLOCK_WEIGHT_FACTOR 256 // Fixed point math (24.8)
+#define CACHE_TARGET_BLOCK_SIZE 4096
+#define CACHE_TOTAL_SIZE        (128 * 1024)
+#define BLOCK_COUNT_MAX         32
+#define BLOCK_WEIGHT_FACTOR     256 // Fixed point math (24.8)
+#define INVALID_SECTOR          0xffffffffffffffff
 
 struct bd_cache
 {
     struct block_device *bd;
-    int weight[BLOCK_COUNT];
-    u64 sector[BLOCK_COUNT];
-    u8 cache[BLOCK_COUNT][SECTORS_PER_BLOCK*512];
+    u32 sector_size;
+    u32 block_size;
+    u16 sectors_per_block;
+    u16 block_count;
+    int weight[BLOCK_COUNT_MAX];
+    u64 sector[BLOCK_COUNT_MAX];
+    u8 *cache;
 #ifdef DEBUG
     u32 sectors_read;
     u32 sectors_cache;
@@ -22,32 +28,43 @@ struct bd_cache
 #endif
 };
 
-/* cache overlaps with requested area ? */
-static int _overlaps(u64 csector, u64 sector, u16 count)
+static u8 *_get_block(struct bd_cache *c, int blkidx)
 {
-    if ((sector < (csector + SECTORS_PER_BLOCK)) && ((sector + count) > csector))
-        return 1;
-    else
+    return c->cache + blkidx * c->block_size;
+}
+
+/* cache overlaps with requested area ? */
+static int _overlaps(struct bd_cache *c, u64 csector, u64 sector, u16 count)
+{
+    if (csector == INVALID_SECTOR || count == 0)
         return 0;
+
+    if (sector >= csector)
+        return sector - csector < c->sectors_per_block;
+
+    return csector - sector < count;
 }
 
 /* cache contains requested area ? */
-static int _contains(u64 csector, u64 sector, u16 count)
+static int _contains(struct bd_cache *c, u64 csector, u64 sector, u16 count)
 {
-    if ((sector >= csector) && ((sector + count) <= (csector + SECTORS_PER_BLOCK)))
-        return 1;
-    else
+    u64 offset;
+
+    if (csector == INVALID_SECTOR || sector < csector)
         return 0;
+
+    offset = sector - csector;
+    return offset < c->sectors_per_block && count <= c->sectors_per_block - offset;
 }
 
 static void _invalidate(struct bd_cache *c, u64 sector, u16 count)
 {
     int blkidx;
 
-    for (blkidx = 0; blkidx < BLOCK_COUNT; blkidx++) {
-        if (_overlaps(c->sector[blkidx], sector, count)) {
+    for (blkidx = 0; blkidx < c->block_count; blkidx++) {
+        if (_overlaps(c, c->sector[blkidx], sector, count)) {
             // Invalidate cache entry
-            c->sector[blkidx] = 0xffffffffffffffff;
+            c->sector[blkidx] = INVALID_SECTOR;
         }
     }
 }
@@ -60,9 +77,13 @@ static int _read(struct block_device *bd, u64 sector, void *buffer, u16 count)
     DEBUG_U64_2XU32(sector);
     M_DEBUG("%s(0x%08x%08x, %d)\n", __FUNCTION__, sector_u32[1], sector_u32[0], count);
 
-    if (count >= SECTORS_PER_BLOCK ||
+    if (count == 0)
+        return 0;
+
+    if (count > c->sectors_per_block ||
+        (count == c->sectors_per_block && c->sectors_per_block > 1) ||
         sector >= c->bd->sectorCount ||
-        SECTORS_PER_BLOCK > c->bd->sectorCount - sector) {
+        c->sectors_per_block > c->bd->sectorCount - sector) {
         // Do a direct read
         return c->bd->read(c->bd, sector, buffer, count);
     }
@@ -73,8 +94,8 @@ static int _read(struct block_device *bd, u64 sector, void *buffer, u16 count)
 
     // Do a cached read
     int blkidx;
-    for (blkidx = 0; blkidx < BLOCK_COUNT; blkidx++) {
-        if (_contains(c->sector[blkidx], sector, count)) {
+    for (blkidx = 0; blkidx < c->block_count; blkidx++) {
+        if (_contains(c, c->sector[blkidx], sector, count)) {
 #ifdef DEBUG
             c->sectors_cache += count;
             //M_DEBUG("- CACHE HIT[%d] [block %d] [devread %ds, hit-ratio %d%%]\n", sector, blkidx, c->sectors_dev, (c->sectors_cache * 100) / c->sectors_read);
@@ -86,8 +107,8 @@ static int _read(struct block_device *bd, u64 sector, void *buffer, u16 count)
             c->weight[blkidx] += count * BLOCK_WEIGHT_FACTOR;
 
             // Read from cache
-            u64 offset = (sector - c->sector[blkidx]) * 512;
-            memcpy(buffer, &c->cache[blkidx][offset], count * 512);
+            u32 offset = (sector - c->sector[blkidx]) * c->sector_size;
+            memcpy(buffer, _get_block(c, blkidx) + offset, count * c->sector_size);
             return count;
         }
     }
@@ -96,13 +117,13 @@ static int _read(struct block_device *bd, u64 sector, void *buffer, u16 count)
     int blkidx_best_weight = 0x7fffffff;
     int blkidx_best = 0;
     M_DEBUG("- list: ");
-    for (blkidx = 0; blkidx < BLOCK_COUNT; blkidx++) {
+    for (blkidx = 0; blkidx < c->block_count; blkidx++) {
 #ifdef DEBUG
         printf("%*d ", 3, c->weight[blkidx] / BLOCK_WEIGHT_FACTOR);
 #endif
 
         // Dynamic aging
-        c->weight[blkidx] -= (SECTORS_PER_BLOCK * BLOCK_WEIGHT_FACTOR / BLOCK_COUNT) + (c->weight[blkidx] / 32);
+        c->weight[blkidx] -= (c->sectors_per_block * BLOCK_WEIGHT_FACTOR / c->block_count) + (c->weight[blkidx] / 32);
 
         if (c->weight[blkidx] < blkidx_best_weight) {
             // Better block found
@@ -112,14 +133,14 @@ static int _read(struct block_device *bd, u64 sector, void *buffer, u16 count)
     }
 #ifdef DEBUG
     printf(" devread: %*d, evict %*d [%*d], add [%*d]\n", 4, c->sectors_dev, 2, blkidx_best, 8, c->sector[blkidx_best], 8, sector);
-    c->sectors_dev += SECTORS_PER_BLOCK;
+    c->sectors_dev += c->sectors_per_block;
     //M_DEBUG("- CACHE READ[%d] -> [block %d] [devread %ds, hit-ratio %d%%]\n", sector, blkidx_best, c->sectors_dev, (c->sectors_cache * 100) / c->sectors_read);
 #endif
 
     // 读取完整数据前保持缓存项无效，防止返回陈旧或不完整的数据。
-    c->sector[blkidx_best] = 0xffffffffffffffff;
-    result = c->bd->read(c->bd, sector, c->cache[blkidx_best], SECTORS_PER_BLOCK);
-    if (result != SECTORS_PER_BLOCK) {
+    c->sector[blkidx_best] = INVALID_SECTOR;
+    result = c->bd->read(c->bd, sector, _get_block(c, blkidx_best), c->sectors_per_block);
+    if (result != c->sectors_per_block) {
         // 预读范围内、调用方实际未请求的扇区也可能导致读取失败。
         // 此时仅重读实际请求的扇区，并保持缓存项无效。
         return c->bd->read(c->bd, sector, buffer, count);
@@ -129,9 +150,9 @@ static int _read(struct block_device *bd, u64 sector, void *buffer, u16 count)
     c->sector[blkidx_best] = sector;
 
     // Read from cache
-    u64 offset = (sector - c->sector[blkidx_best]) * 512;
+    u32 offset = (sector - c->sector[blkidx_best]) * c->sector_size;
     c->weight[blkidx_best] = count * BLOCK_WEIGHT_FACTOR;
-    memcpy(buffer, &c->cache[blkidx_best][offset], count * 512);
+    memcpy(buffer, _get_block(c, blkidx_best) + offset, count * c->sector_size);
     return count;
 }
 
@@ -168,9 +189,24 @@ static int _stop(struct block_device *bd)
 struct block_device *bd_cache_create(struct block_device *bd)
 {
     int blkidx;
+    u32 sectors_per_block;
+    u32 block_size;
+    u32 block_count;
 
-    // 缓存存储和偏移计算固定以 512 字节扇区为单位。
-    if (bd == NULL || bd->sectorSize != 512)
+    // 缓存支持 512～8192 字节的二次幂逻辑扇区；FatFs 当前只挂载到 4096 字节。
+    if (bd == NULL || bd->sectorSize < 512 || bd->sectorSize > 8192 || (bd->sectorSize & (bd->sectorSize - 1)) != 0)
+        return NULL;
+
+    if (bd->sectorSize <= CACHE_TARGET_BLOCK_SIZE)
+        sectors_per_block = CACHE_TARGET_BLOCK_SIZE / bd->sectorSize;
+    else
+        sectors_per_block = 1;
+
+    block_size = sectors_per_block * bd->sectorSize;
+    block_count = CACHE_TOTAL_SIZE / block_size;
+    if (block_count > BLOCK_COUNT_MAX)
+        block_count = BLOCK_COUNT_MAX;
+    if (block_count == 0)
         return NULL;
 
     // Create new block device
@@ -188,10 +224,21 @@ struct block_device *bd_cache_create(struct block_device *bd)
         return NULL;
     }
 
+    c->cache = AllocSysMemory(ALLOC_FIRST, block_size * block_count, NULL);
+    if (c->cache == NULL) {
+        FreeSysMemory(c);
+        FreeSysMemory(cbd);
+        return NULL;
+    }
+
     c->bd = bd;
-    for (blkidx = 0; blkidx < BLOCK_COUNT; blkidx++) {
+    c->sector_size = bd->sectorSize;
+    c->block_size = block_size;
+    c->sectors_per_block = sectors_per_block;
+    c->block_count = block_count;
+    for (blkidx = 0; blkidx < c->block_count; blkidx++) {
         c->weight[blkidx] = 0;
-        c->sector[blkidx] = 0xffffffffffffffff;
+        c->sector[blkidx] = INVALID_SECTOR;
     }
 #ifdef DEBUG
     c->sectors_read = 0;
@@ -220,11 +267,18 @@ struct block_device *bd_cache_create(struct block_device *bd)
 
 void bd_cache_destroy(struct block_device *cbd)
 {
+    struct bd_cache *c;
+
     M_DEBUG("%s\n", __FUNCTION__);
 
     if (cbd == NULL)
         return;
 
-    FreeSysMemory(cbd->priv);
+    c = cbd->priv;
+    if (c != NULL) {
+        if (c->cache != NULL)
+            FreeSysMemory(c->cache);
+        FreeSysMemory(c);
+    }
     FreeSysMemory(cbd);
 }
