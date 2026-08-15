@@ -634,7 +634,6 @@ static int usb_mass_connect(int devId)
     UsbConfigDescriptor *config;
     UsbInterfaceDescriptor *interface;
     UsbEndpointDescriptor *endpoint;
-    iop_sema_t SemaData;
     mass_dev *dev;
 
     M_PRINTF("connect: devId=%i\n", devId);
@@ -700,17 +699,6 @@ static int usb_mass_connect(int devId)
         return -1;
     }
 
-    SemaData.initial = 0;
-    SemaData.max     = 1;
-    SemaData.option  = 0;
-    SemaData.attr    = 0;
-    if ((dev->ioSema = CreateSema(&SemaData)) < 0) {
-        M_PRINTF("ERROR: Failed to allocate I/O semaphore\n");
-        usb_probe_error = 1;
-        bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_ERROR);
-        return -1;
-    }
-
     /*store current configuration id - can't call set_configuration here */
     dev->configId = config->bConfigurationValue;
     dev->status   = USBMASS_DEV_STAT_CONN;
@@ -753,8 +741,6 @@ static int usb_mass_disconnect(int devId)
     if (dev->status & USBMASS_DEV_STAT_CONN) {
         usb_mass_release(dev);
         dev->devId = -1;
-
-        DeleteSema(dev->ioSema);
 
         // Should this move to the thread
         // just like the scsi_connect?
@@ -887,9 +873,19 @@ int usb_mass_init(void)
 
     usb_probe_error = 0;
 
+    sema.attr    = 0;
+    sema.option  = 0;
+    sema.initial = 0;
+    sema.max     = 1;
+
     for (i = 0; i < NUM_DEVICES; ++i) {
         g_mass_device[i].status = 0;
         g_mass_device[i].devId  = -1;
+
+        if ((g_mass_device[i].ioSema = CreateSema(&sema)) < 0) {
+            M_PRINTF("ERROR: Failed to allocate I/O semaphore\n");
+            return -1;
+        }
 
         g_mass_device[i].scsi.priv = &g_mass_device[i];
         g_mass_device[i].scsi.name = "usb";
@@ -900,10 +896,6 @@ int usb_mass_init(void)
         g_mass_device[i].scsi.queue_cmd   = usb_queue_cmd;
     }
 
-    sema.attr            = 0;
-    sema.option          = 0;
-    sema.initial         = 0;
-    sema.max             = 1;
     usb_mass_update_sema = CreateSema(&sema);
 
     driver.next       = NULL;
