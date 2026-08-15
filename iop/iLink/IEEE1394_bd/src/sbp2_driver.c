@@ -1,5 +1,6 @@
 #include <intrman.h>
 #include <bdm.h>
+#include <errno.h>
 #include <loadcore.h>
 #include <stdio.h>
 #include <sysclib.h>
@@ -159,6 +160,7 @@ void init_ieee1394DiskDriver(void)
 
 static int initConfigureSBP2Device(struct SBP2Device *dev)
 {
+    int result;
     unsigned char retries;
 
     // Try 5 x 200ms to login (same as Linux: drivers/firewire/sbp2.c)
@@ -184,9 +186,9 @@ static int initConfigureSBP2Device(struct SBP2Device *dev)
         return -2;
     }
 
-    if (scsi_connect(&dev->scsi) != 0) {
+    if ((result = scsi_connect(&dev->scsi)) != 0) {
         M_DEBUG("Error initializing the SCSI device.\n");
-        return -3;
+        return result == -ENOMEDIUM ? result : -3;
     }
 
     M_DEBUG("Completed device initialization.\n");
@@ -275,7 +277,7 @@ static inline int initSBP2Disk(struct SBP2Device *dev)
 /* Hardware event handling threads. */
 static void iLinkIntrCBHandlingThread(void *arg)
 {
-    int nNodes, i, targetDeviceID, nodeID, result, deviceDetected;
+    int nNodes, i, targetDeviceID, nodeID, result, deviceDetected, deviceError;
     static const unsigned char PayloadSizeLookupTable[] = {
         7, /* S100; 2^(7+2)=512 */
         8, /* S200; 2^(8+2)=1024 */
@@ -310,6 +312,7 @@ static void iLinkIntrCBHandlingThread(void *arg)
 
         targetDeviceID = 0;
         deviceDetected = 0;
+        deviceError = 0;
 
         for (i = 0; i < nNodes; i++) {
             if (targetDeviceID >= MAX_DEVICES) {
@@ -353,6 +356,7 @@ static void iLinkIntrCBHandlingThread(void *arg)
             SBP2Devices[targetDeviceID].nodeID = nodeID;
             if ((result = initSBP2Disk(&SBP2Devices[targetDeviceID])) < 0) {
                 M_DEBUG("Error initializing the device. Code: %d.\n", result);
+                deviceError = 1;
                 continue;
             }
 
@@ -367,17 +371,20 @@ static void iLinkIntrCBHandlingThread(void *arg)
 
                 SBP2Devices[targetDeviceID].max_payload = PayloadSizeLookupTable[SBP2Devices[targetDeviceID].speed];
 
-                if (initConfigureSBP2Device(&SBP2Devices[targetDeviceID]) >= 0) {
+                result = initConfigureSBP2Device(&SBP2Devices[targetDeviceID]);
+                if (result >= 0) {
                     SBP2Devices[targetDeviceID].IsConnected = 1;
                     targetDeviceID++;
-                }
+                } else if (result != -ENOMEDIUM)
+                    deviceError = 1;
             } else {
                 M_DEBUG("Error allocating a transaction.\n");
+                deviceError = 1;
             }
         }
 
         if (targetDeviceID == 0)
-            bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, deviceDetected ? BDM_PROBE_STATE_ERROR : BDM_PROBE_STATE_ABSENT);
+            bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, deviceDetected && deviceError ? BDM_PROBE_STATE_ERROR : BDM_PROBE_STATE_ABSENT);
         else
             bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_PRESENT);
 

@@ -155,8 +155,11 @@ static int scsi_warmup(struct block_device *bd)
             M_PRINTF("ERROR: scsi_cmd_request_sense %d\n", stat);
         }
 
-        if ((sd.error_code == 0x70) && (sd.sense_key != 0x00)) {
+        if ((stat == 0) && (sd.error_code == 0x70) && (sd.sense_key != 0x00)) {
             M_PRINTF("Sense Data key: %02X code: %02X qual: %02X\n", sd.sense_key, sd.add_sense_code, sd.add_sense_qual);
+
+            if ((sd.sense_key == 0x02) && (sd.add_sense_code == 0x3A))
+                return -ENOMEDIUM;
 
             if ((sd.sense_key == 0x02) && (sd.add_sense_code == 0x04) && (sd.add_sense_qual == 0x02)) {
                 M_PRINTF("ERROR: Additional initalization is required for this device!\n");
@@ -272,7 +275,7 @@ static int scsi_stop(struct block_device *bd)
 //
 int scsi_connect(struct scsi_interface *scsi)
 {
-    int i;
+    int i, result;
 
     M_DEBUG("%s\n", __func__);
 
@@ -283,10 +286,10 @@ int scsi_connect(struct scsi_interface *scsi)
             bd->priv = scsi;
             bd->name = scsi->name;
             bd->devNr = scsi->devNr;
-            if (scsi_warmup(bd) != 0) {
+            if ((result = scsi_warmup(bd)) != 0) {
                 M_PRINTF("ERROR: scsi_warmup failed\n");
                 bd->priv = NULL;
-                return -1;
+                return result;
             }
             bdm_connect_bd(bd);
             return 0;

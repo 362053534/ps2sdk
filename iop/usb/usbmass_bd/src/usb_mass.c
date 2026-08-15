@@ -856,9 +856,13 @@ static void usb_mass_update(void *arg)
                     dev->scsi.devNr = 2; // hub?
 
                 dev->status |= USBMASS_DEV_STAT_CONF;
-                if (scsi_connect(&dev->scsi) != 0) {
+                ret = scsi_connect(&dev->scsi);
+                if (ret != 0) {
                     dev->status &= ~USBMASS_DEV_STAT_CONF;
-                    if (++dev->scsiRetries < USB_SCSI_MAX_RETRIES) {
+                    if (ret == -ENOMEDIUM) {
+                        dev->scsiRetries = USB_SCSI_MAX_RETRIES;
+                        bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_ABSENT);
+                    } else if (++dev->scsiRetries < USB_SCSI_MAX_RETRIES) {
                         DelayThread(1000000);
                         SignalSema(usb_mass_update_sema);
                     } else {
