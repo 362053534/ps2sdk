@@ -448,3 +448,32 @@ int sceUsbdChangeThreadPriority(int prio1, int prio2)
 
     return res;
 }
+
+int sceUsbdGetRootPortConnectionMask(void)
+{
+    int mask = 0;
+    int i;
+#if USE_GP_REGISTER
+    void *OldGP;
+
+    OldGP = SetModuleGP();
+#endif
+
+    if (!memPool.ohciRegs) {
+#if USE_GP_REGISTER
+        SetGP(OldGP);
+#endif
+        return -1;
+    }
+
+    for (i = 0; i < 2; i++) {
+        if (memPool.ohciRegs->HcRhPortStatus[i] & BIT(PORT_CONNECTION))
+            mask |= 1 << i;
+    }
+
+#if USE_GP_REGISTER
+    SetGP(OldGP);
+#endif
+
+    return mask;
+}

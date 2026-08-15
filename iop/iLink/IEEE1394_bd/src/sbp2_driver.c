@@ -308,6 +308,13 @@ static void iLinkIntrCBHandlingThread(void *arg)
         M_PRINTF("BUS RESET DETECTED. Nodes: %d\n", nNodes);
         M_PRINTF("Local Node: 0x%08x.\n", iLinkGetLocalNodeID());
 
+        if (nNodes <= 1) {
+            for (i = 0; i < MAX_DEVICES; i++)
+                SBP2Devices[i].IsConnected = 0;
+            bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_ABSENT);
+            continue;
+        }
+
         // DelayThread(500000); /* Give the devices on the bus some time to initialize themselves (The SBP-2 standard states that a maximum of 5 seconds may be given). */
 
         targetDeviceID = 0;

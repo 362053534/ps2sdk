@@ -650,6 +650,12 @@ static void sd_detect()
 {
     uint16_t results;
 
+    if (!sdcard.initialized && !CONN_STAT_CDC3(inl_sio2_stat70_get())) {
+        sd_init_retries = 0;
+        bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_ABSENT);
+        return;
+    }
+
     mx_sio2_lock(INTR_NONE);
 
     if (sdcard.initialized == 0) {
@@ -709,15 +715,12 @@ static void sd_detect_thread(void *arg)
     M_PRINTF("card detection thread running\n");
 
     while (!sd_detect_thread_stop) {
-        DelayThread(1000 * 1000);
-
-        if (sd_detect_thread_stop)
-            break;
-
         /* try to detect card removal if it hasn't been used recently */
         if (sdcard.used == 0)
             sd_detect();
         sdcard.used = 0;
+
+        DelayThread(1000 * 1000);
     }
 
     ExitDeleteThread();

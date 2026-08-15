@@ -307,6 +307,7 @@ extern int sceUsbdTransferPipe(int id, void *data, u32 len, void *option, sceUsb
 extern int sceUsbdRegisterAutoloader(sceUsbdLddOps *drv); // Arbitrarily named
 extern int sceUsbdUnregisterAutoloader(void);             // Arbitrarily named
 extern int sceUsbdChangeThreadPriority(int prio1, int prio2);
+extern int sceUsbdGetRootPortConnectionMask(void);
 
 // These have been added in 1.2 export version
 extern int sceUsbdGetReportDescriptor(int devId, int cfgNum, int ifNum, void **desc, u32 *len);
@@ -331,6 +332,7 @@ extern int sceUsbdMultiIsochronousTransfer(int pipeId, sceUsbdMultiIsochronousRe
 #define UsbRegisterAutoloader           sceUsbdRegisterAutoloader
 #define UsbUnregisterAutoloader         sceUsbdUnregisterAutoloader
 #define UsbChangeThreadPriority         sceUsbdChangeThreadPriority
+#define UsbGetRootPortConnectionMask    sceUsbdGetRootPortConnectionMask
 #define UsbGetReportDescriptor          sceUsbdGetReportDescriptor
 #define UsbMultiIsochronousTransfer     sceUsbdMultiIsochronousTransfer
 
@@ -352,6 +354,7 @@ extern int sceUsbdMultiIsochronousTransfer(int pipeId, sceUsbdMultiIsochronousRe
 #define I_sceUsbdChangeThreadPriority     DECLARE_IMPORT(16, sceUsbdChangeThreadPriority)
 #define I_sceUsbdGetReportDescriptor      DECLARE_IMPORT(17, sceUsbdGetReportDescriptor)
 #define I_sceUsbdMultiIsochronousTransfer DECLARE_IMPORT(18, sceUsbdMultiIsochronousTransfer)
+#define I_sceUsbdGetRootPortConnectionMask DECLARE_IMPORT(19, sceUsbdGetRootPortConnectionMask)
 
 // For backwards compatibility:
 #define I_UsbCallbackProc                 I_sceUsbdDoneCallback
@@ -372,6 +375,7 @@ extern int sceUsbdMultiIsochronousTransfer(int pipeId, sceUsbdMultiIsochronousRe
 #define I_UsbRegisterAutoloader           I_sceUsbdRegisterAutoloader
 #define I_UsbUnregisterAutoloader         I_sceUsbdUnregisterAutoloader
 #define I_UsbChangeThreadPriority         I_sceUsbdChangeThreadPriority
+#define I_UsbGetRootPortConnectionMask    I_sceUsbdGetRootPortConnectionMask
 #define I_UsbGetReportDescriptor          I_sceUsbdGetReportDescriptor
 #define I_UsbMultiIsochronousTransfer     I_sceUsbdMultiIsochronousTransfer
 

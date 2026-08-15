@@ -18,6 +18,9 @@ DECLARE_EXPORT_TABLE(usbd, 1, 1)
 	DECLARE_EXPORT(sceUsbdRegisterAutoloader)
 /*15*/	DECLARE_EXPORT(sceUsbdUnregisterAutoloader)
 	DECLARE_EXPORT(sceUsbdChangeThreadPriority)
+	DECLARE_EXPORT(_retonly)
+	DECLARE_EXPORT(_retonly)
+	DECLARE_EXPORT(sceUsbdGetRootPortConnectionMask)
 END_EXPORT_TABLE
 
 void _retonly() {}

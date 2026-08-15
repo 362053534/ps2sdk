@@ -950,6 +950,12 @@ int usb_mass_init(void)
         return -1;
     }
 
+    ret = sceUsbdGetRootPortConnectionMask();
+    if (ret == 0) {
+        bdm_set_probe_state(BDM_PROBE_TYPE_USB, BDM_PROBE_STATE_ABSENT);
+        return 0;
+    }
+
     for (ret = 0; ret <= USB_PROBE_MAX_RETRIES; ret++) {
         for (i = 0; i < NUM_DEVICES; i++) {
             if (g_mass_device[i].status & USBMASS_DEV_STAT_CONN)
