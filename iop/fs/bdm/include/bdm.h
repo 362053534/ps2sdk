@@ -76,6 +76,8 @@ extern void bdm_get_bd(struct block_device **pbd, unsigned int count);
 extern void bdm_RegisterCallback(bdm_cb cb);
 extern void bdm_set_probe_state(unsigned int type, unsigned int state);
 extern void bdm_get_probe_status(u32 *completed, u32 *present, u32 *error);
+extern void bdm_set_probe_enabled(unsigned int type, unsigned int enabled);
+extern int bdm_get_probe_enabled(unsigned int type);
 
 #define bdm_IMPORTS_start DECLARE_IMPORT_TABLE(bdm, 1, 1)
 #define bdm_IMPORTS_end   END_IMPORT_TABLE
@@ -88,5 +90,7 @@ extern void bdm_get_probe_status(u32 *completed, u32 *present, u32 *error);
 #define I_bdm_RegisterCallback DECLARE_IMPORT(9, bdm_RegisterCallback)
 #define I_bdm_set_probe_state  DECLARE_IMPORT(10, bdm_set_probe_state)
 #define I_bdm_get_probe_status DECLARE_IMPORT(11, bdm_get_probe_status)
+#define I_bdm_set_probe_enabled DECLARE_IMPORT(12, bdm_set_probe_enabled)
+#define I_bdm_get_probe_enabled DECLARE_IMPORT(13, bdm_get_probe_enabled)
 
 #endif

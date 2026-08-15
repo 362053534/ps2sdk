@@ -13,6 +13,8 @@ DECLARE_EXPORT_TABLE(bdm, 1, 1)
 	DECLARE_EXPORT(bdm_RegisterCallback)
 	DECLARE_EXPORT(bdm_set_probe_state)
 	DECLARE_EXPORT(bdm_get_probe_status)
+	DECLARE_EXPORT(bdm_set_probe_enabled)
+	DECLARE_EXPORT(bdm_get_probe_enabled)
 END_EXPORT_TABLE
 
 void _retonly() {}

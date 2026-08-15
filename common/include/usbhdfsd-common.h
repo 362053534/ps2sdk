@@ -49,6 +49,8 @@ typedef struct bd_fragment {
 #define USBMASS_DEVCTL_GET_PROBE_STATUS 0x0003
 /** 获取mass槽位对应的挂载设备信息。 */
 #define USBMASS_DEVCTL_GET_MOUNT_INFO 0x0004
+/** 开启或暂停MX4SIO周期探测。 */
+#define USBMASS_DEVCTL_SET_MX4SIO_PROBE 0x0005
 
 #define USBMASS_BD_TYPE_USB   0x01
 #define USBMASS_BD_TYPE_ILINK 0x02

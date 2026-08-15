@@ -850,6 +850,18 @@ static int fs_devctl(iop_file_t *fd, const char *name, int cmd, void *arg, unsig
             ret = 0;
             break;
         }
+        case USBMASS_DEVCTL_SET_MX4SIO_PROBE: {
+            int *enabled = (int *)arg;
+
+            if (!enabled || arglen < sizeof(int)) {
+                ret = -EINVAL;
+                break;
+            }
+
+            bdm_set_probe_enabled(BDM_PROBE_TYPE_SDC, *enabled);
+            ret = 0;
+            break;
+        }
         case USBMASS_DEVCTL_GET_MOUNT_INFO: {
             usbmass_mount_info_t *mountInfo = (usbmass_mount_info_t *)buf;
             unsigned int maxCount = buflen / sizeof(usbmass_mount_info_t);

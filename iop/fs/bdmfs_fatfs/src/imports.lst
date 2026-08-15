@@ -3,6 +3,7 @@ I_bdm_connect_fs
 I_bdm_disconnect_fs
 I_bdm_get_bd
 I_bdm_get_probe_status
+I_bdm_set_probe_enabled
 bdm_IMPORTS_end
 
 cdvdman_IMPORTS_start

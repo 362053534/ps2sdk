@@ -22,6 +22,7 @@ static bdm_cb g_cb       = NULL;
 static int bdm_event     = -1;
 static int bdm_thread_id = -1;
 static volatile u8 g_probe_state[BDM_PROBE_TYPE_COUNT];
+static volatile u8 g_probe_enabled[BDM_PROBE_TYPE_COUNT];
 
 /* Event flag bits */
 #define BDM_EVENT_CB_MOUNT  0x01
@@ -173,6 +174,20 @@ void bdm_get_probe_status(u32 *completed, u32 *present, u32 *error)
     }
 }
 
+void bdm_set_probe_enabled(unsigned int type, unsigned int enabled)
+{
+    if (type < BDM_PROBE_TYPE_COUNT) {
+        if (enabled && !g_probe_enabled[type])
+            g_probe_state[type] = BDM_PROBE_STATE_PENDING;
+        g_probe_enabled[type] = enabled != 0;
+    }
+}
+
+int bdm_get_probe_enabled(unsigned int type)
+{
+    return type < BDM_PROBE_TYPE_COUNT && g_probe_enabled[type];
+}
+
 static void bdm_try_mount(struct bdm_mounts *mount)
 {
     int i;
@@ -241,8 +256,10 @@ int bdm_init()
         g_fs[i]        = NULL;
     }
 
-    for (i = 0; i < BDM_PROBE_TYPE_COUNT; i++)
+    for (i = 0; i < BDM_PROBE_TYPE_COUNT; i++) {
         g_probe_state[i] = BDM_PROBE_STATE_PENDING;
+        g_probe_enabled[i] = 1;
+    }
 
     EventFlagData.attr   = 0;
     EventFlagData.option = 0;
