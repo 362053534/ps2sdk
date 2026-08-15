@@ -606,30 +606,69 @@ static int get_frag_list(FIL *file, void *rdata, unsigned int rdatalen)
     bd_fragment_t *f = (bd_fragment_t*)rdata;
     int iMaxFragments = rdatalen / sizeof(bd_fragment_t);
     int iFragCount = 0;
+    u64 iClustersRemaining;
+    u64 iBytesPerCluster;
 
     // Get the block device backing the file so we can get the starting LBA of the file system.
     struct block_device* bd = fatfs_fs_driver_get_mounted_bd_from_index(file->obj.fs->pdrv);
 
+    if (bd == NULL)
+        return -ENXIO;
+    if (iMaxFragments > 0 && rdata == NULL)
+        return -EINVAL;
+    if (file->obj.objsize == 0)
+        return 0;
+
+    iBytesPerCluster = (u64)file->obj.fs->csize * bd->sectorSize;
+    if (iBytesPerCluster == 0)
+        return -EIO;
+    iClustersRemaining = (u64)file->obj.objsize / iBytesPerCluster;
+    if ((u64)file->obj.objsize % iBytesPerCluster != 0)
+        iClustersRemaining++;
+
     DWORD iClusterStart = file->obj.sclust;
     DWORD iClusterCurrent = iClusterStart;
 
-    do {
-        DWORD iClusterNext = get_fat(&file->obj, iClusterCurrent);
-        if (iClusterNext != (iClusterCurrent + 1)) {
+    while (iClustersRemaining > 0) {
+        u64 iFragmentSectorCount;
+        LBA_t iFragmentSector;
+        DWORD iClusterNext = iClusterCurrent;
+
+        if (iClusterCurrent < 2 || iClusterCurrent >= file->obj.fs->n_fatent)
+            return -EIO;
+
+        // 最后一个必需簇只需要映射本身，无需读取或校验它的后继 FAT 表项。
+        // 这样可以兼容额外的预分配尾链，以及不影响文件内容的末尾 FAT 项异常。
+        if (iClustersRemaining > 1) {
+            iClusterNext = get_fat(&file->obj, iClusterCurrent);
+            if (iClusterNext == 0xffffffff || iClusterNext < 2 || iClusterNext >= file->obj.fs->n_fatent)
+                return -EIO;
+        }
+
+        iClustersRemaining--;
+        if (iClustersRemaining == 0 || iClusterNext != (iClusterCurrent + 1)) {
             // Fragment or file end
             M_DEBUG("fragment: %uc - %uc + 1\n", iClusterStart, iClusterCurrent + 1);
+            iFragmentSector = clst2sect(file->obj.fs, iClusterStart);
+            iFragmentSectorCount = (u64)(iClusterCurrent - iClusterStart + 1) * file->obj.fs->csize;
+            if (iFragmentSector == 0 || iFragmentSectorCount == 0)
+                return -EIO;
+            if (iFragmentSectorCount > 0xffffffff)
+                return -EOVERFLOW;
             if (iFragCount < iMaxFragments) {
-                u64 sector = clst2sect(file->obj.fs, iClusterStart) + bd->sectorOffset;
+                u64 sector = iFragmentSector + bd->sectorOffset;
                 f[iFragCount].sector = sector;
-                f[iFragCount].count  = clst2sect(file->obj.fs, iClusterCurrent) - clst2sect(file->obj.fs, iClusterStart) + file->obj.fs->csize;
+                f[iFragCount].count  = (u32)iFragmentSectorCount;
                 DEBUG_U64_2XU32(sector);
                 M_DEBUG(" - sectors: 0x%08x%08x count %u\n", sector_u32[1], sector_u32[0], f[iFragCount].count);
             }
             iFragCount++;
-            iClusterStart = iClusterNext;
+            if (iClustersRemaining > 0)
+                iClusterStart = iClusterNext;
         }
-        iClusterCurrent = iClusterNext;
-    } while(iClusterCurrent < file->obj.fs->n_fatent);
+        if (iClustersRemaining > 0)
+            iClusterCurrent = iClusterNext;
+    }
 
     return iFragCount;
 }

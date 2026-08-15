@@ -55,11 +55,14 @@ static void _invalidate(struct bd_cache *c, u64 sector, u16 count)
 static int _read(struct block_device *bd, u64 sector, void *buffer, u16 count)
 {
     struct bd_cache *c = bd->priv;
+    int result;
 
     DEBUG_U64_2XU32(sector);
     M_DEBUG("%s(0x%08x%08x, %d)\n", __FUNCTION__, sector_u32[1], sector_u32[0], count);
 
-    if (count >= SECTORS_PER_BLOCK) {
+    if (count >= SECTORS_PER_BLOCK ||
+        sector >= c->bd->sectorCount ||
+        SECTORS_PER_BLOCK > c->bd->sectorCount - sector) {
         // Do a direct read
         return c->bd->read(c->bd, sector, buffer, count);
     }
@@ -113,8 +116,16 @@ static int _read(struct block_device *bd, u64 sector, void *buffer, u16 count)
     //M_DEBUG("- CACHE READ[%d] -> [block %d] [devread %ds, hit-ratio %d%%]\n", sector, blkidx_best, c->sectors_dev, (c->sectors_cache * 100) / c->sectors_read);
 #endif
 
-    // Fill the block
-    c->bd->read(c->bd, sector, c->cache[blkidx_best], SECTORS_PER_BLOCK);
+    // 读取完整数据前保持缓存项无效，防止返回陈旧或不完整的数据。
+    c->sector[blkidx_best] = 0xffffffffffffffff;
+    result = c->bd->read(c->bd, sector, c->cache[blkidx_best], SECTORS_PER_BLOCK);
+    if (result != SECTORS_PER_BLOCK) {
+        // 预读范围内、调用方实际未请求的扇区也可能导致读取失败。
+        // 此时仅重读实际请求的扇区，并保持缓存项无效。
+        return c->bd->read(c->bd, sector, buffer, count);
+    }
+
+    // 只有完整读取缓存块后，才发布这个缓存项。
     c->sector[blkidx_best] = sector;
 
     // Read from cache
@@ -158,12 +169,24 @@ struct block_device *bd_cache_create(struct block_device *bd)
 {
     int blkidx;
 
+    // 缓存存储和偏移计算固定以 512 字节扇区为单位。
+    if (bd == NULL || bd->sectorSize != 512)
+        return NULL;
+
     // Create new block device
     struct block_device *cbd = AllocSysMemory(ALLOC_FIRST, sizeof(struct block_device), NULL);
     // Create new private data
     struct bd_cache *c = AllocSysMemory(ALLOC_FIRST, sizeof(struct bd_cache), NULL);
 
     M_DEBUG("%s\n", __FUNCTION__);
+
+    if (cbd == NULL || c == NULL) {
+        if (c != NULL)
+            FreeSysMemory(c);
+        if (cbd != NULL)
+            FreeSysMemory(cbd);
+        return NULL;
+    }
 
     c->bd = bd;
     for (blkidx = 0; blkidx < BLOCK_COUNT; blkidx++) {
@@ -198,6 +221,9 @@ struct block_device *bd_cache_create(struct block_device *bd)
 void bd_cache_destroy(struct block_device *cbd)
 {
     M_DEBUG("%s\n", __FUNCTION__);
+
+    if (cbd == NULL)
+        return;
 
     FreeSysMemory(cbd->priv);
     FreeSysMemory(cbd);
