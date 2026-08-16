@@ -15,7 +15,6 @@
 #define SIO2_REG_DATA_IN     (SIO2_BASE + 0x264)
 #define SIO2_REG_CTRL        (SIO2_BASE + 0x268)
 #define SIO2_REG_STAT6C      (SIO2_BASE + 0x26C)
-#define SIO2_REG_STAT70      (SIO2_BASE + 0x270)
 #define SIO2_REG_STAT74      (SIO2_BASE + 0x274)
 #define SIO2_REG_UNKN78      (SIO2_BASE + 0x278)
 #define SIO2_REG_UNKN7C      (SIO2_BASE + 0x27C)
@@ -28,7 +27,6 @@
 #define SIO2_A_DATA_IN     (SIO2_BASE + 0x264)
 #define SIO2_A_CTRL        (SIO2_BASE + 0x268)
 #define SIO2_A_STAT6C      (SIO2_BASE + 0x26C)
-#define SIO2_A_CONN_STAT70 (SIO2_BASE + 0x270)
 #define SIO2_A_FIFO_STAT74 (SIO2_BASE + 0x274)
 #define SIO2_A_TX_FIFO_PT  (SIO2_BASE + 0x278)
 #define SIO2_A_RX_FIFO_PT  (SIO2_BASE + 0x27C)
@@ -111,17 +109,6 @@ normal    special
 // Flags used to determine the transfers of which queue slots triggered erroirs. Slot = 0 - 15:
 #define STAT_ERR_QUEUE_SLOT(x, slot) ((((u32)(x)) >> (slot + 16)) & 1)
 
-// 8270 SIO2 Device connected detection status register. (read-only)
-// For ports 0-3. Only SAS0 and SAS1 are actually connected to the physical port and only on early PS2 models (~ SCPH-30000).
-#define CONN_STAT_CDC0(x) ((((u32)(x)) >> 0) & 1)
-#define CONN_STAT_CDC1(x) ((((u32)(x)) >> 1) & 1)
-#define CONN_STAT_CDC2(x) ((((u32)(x)) >> 2) & 1)
-#define CONN_STAT_CDC3(x) ((((u32)(x)) >> 3) & 1)
-#define CONN_STAT_SAS0(x) ((((u32)(x)) >> 4) & 1)
-#define CONN_STAT_SAS1(x) ((((u32)(x)) >> 5) & 1)
-#define CONN_STAT_SAS2(x) ((((u32)(x)) >> 6) & 1)
-#define CONN_STAT_SAS3(x) ((((u32)(x)) >> 7) & 1)
-
 // 8274 SIO2 FIFO status register. (read-only)
 // values 0 - 0x100 bytes:
 #define FSTAT_TX_SZ(x)        ((((u32)(x)) >> 0) & 0x1FF)
@@ -155,7 +142,6 @@ normal    special
 /* 08 */ static inline u32 inl_sio2_portN_ctrl1_get(int N) { return _lw(SIO2_REG_PORT0_CTRL1 + (N * 8)); }
 /* 09 */ static inline void inl_sio2_portN_ctrl2_set(int N, u32 val) { _sw(val, SIO2_REG_PORT0_CTRL2 + (N * 8)); }
 /* 10 */ static inline u32 inl_sio2_portN_ctrl2_get(int N) { return _lw(SIO2_REG_PORT0_CTRL2 + (N * 8)); }
-/* 11 */ static inline u32 inl_sio2_stat70_get() { return _lw(SIO2_REG_STAT70); }
 /* 12 */ static inline void inl_sio2_regN_set(int N, u32 val) { _sw(val, SIO2_REG_BASE + (N * 4)); }
 /* 13 */ static inline u32 inl_sio2_regN_get(int N) { return _lw(SIO2_REG_BASE + (N * 4)); }
 /* 14 */ static inline u32 inl_sio2_stat74_get() { return _lw(SIO2_REG_STAT74); }

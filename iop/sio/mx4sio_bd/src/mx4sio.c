@@ -16,7 +16,7 @@
 
 #include "module_debug.h"
 
-#define SD_INIT_MAX_RETRIES 4
+#define SD_INIT_MAX_RETRIES 10
 
 IRX_ID("mx4sio", 1, 2);
 
@@ -653,12 +653,6 @@ static void sd_detect()
     if (!bdm_get_probe_enabled(BDM_PROBE_TYPE_SDC))
         return;
 
-    if (!sdcard.initialized && !CONN_STAT_CDC3(inl_sio2_stat70_get())) {
-        sd_init_retries = 0;
-        bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_ABSENT);
-        return;
-    }
-
     mx_sio2_lock(INTR_NONE);
 
     if (!bdm_get_probe_enabled(BDM_PROBE_TYPE_SDC)) {
@@ -684,16 +678,11 @@ static void sd_detect()
             }
         }
 
-        if (sdcard.initialized == 0) {
-            if (results == SPISD_RESULT_NO_CARD) {
-                sd_init_retries = 0;
-                bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_ABSENT);
-            } else if (sd_init_retries < SD_INIT_MAX_RETRIES) {
-                if (++sd_init_retries == SD_INIT_MAX_RETRIES)
-                    bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_ERROR);
-                else
-                    bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_PENDING);
-            }
+        if (sdcard.initialized == 0 && sd_init_retries < SD_INIT_MAX_RETRIES) {
+            if (++sd_init_retries == SD_INIT_MAX_RETRIES)
+                bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_ERROR);
+            else
+                bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_PENDING);
         }
     } else {
         /* try to detect card removal by requesting card status (CMD13) */
@@ -718,14 +707,61 @@ static void sd_detect()
 
 static void sd_detect_thread(void *arg)
 {
+    int quickProbeDone = 0;
+    int quickProbePassed = 0;
+
     (void)arg;
 
     M_PRINTF("card detection thread running\n");
 
     while (!sd_detect_thread_stop) {
         /* try to detect card removal if it hasn't been used recently */
-        if (sdcard.used == 0 && bdm_get_probe_enabled(BDM_PROBE_TYPE_SDC))
-            sd_detect();
+        if (sdcard.used == 0 && bdm_get_probe_enabled(BDM_PROBE_TYPE_SDC)) {
+            if (!sdcard.initialized && !quickProbeDone) {
+                // 前0.5秒每帧进行一次极简探测，成功后立即进入原初始化流程。
+                for (int i = 0; i < 30 && !sd_detect_thread_stop && bdm_get_probe_enabled(BDM_PROBE_TYPE_SDC); i++) {
+                    int result;
+
+                    mx_sio2_lock(INTR_NONE);
+                    result = spisd_probe_card(i == 0);
+                    mx_sio2_unlock(INTR_NONE);
+
+                    if (result == SPISD_RESULT_OK) {
+                        quickProbePassed = 1;
+                        break;
+                    }
+
+                    DelayThread(16667);
+                }
+                quickProbeDone = 1;
+                if (!quickProbePassed) {
+                    sd_init_retries = 0;
+                    bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_ABSENT);
+                }
+            } else if (!sdcard.initialized && !quickProbePassed) {
+                mx_sio2_lock(INTR_NONE);
+                quickProbePassed = spisd_probe_card(0) == SPISD_RESULT_OK;
+                mx_sio2_unlock(INTR_NONE);
+
+                if (quickProbePassed) {
+                    sd_init_retries = 0;
+                    bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_PENDING);
+                }
+            }
+
+            if (sdcard.initialized || quickProbePassed) {
+                int initialized = sdcard.initialized;
+
+                sd_detect();
+                if (initialized && !sdcard.initialized) {
+                    quickProbeDone = 0;
+                    quickProbePassed = 0;
+                }
+            }
+        } else if (!bdm_get_probe_enabled(BDM_PROBE_TYPE_SDC)) {
+            quickProbeDone = 0;
+            quickProbePassed = 0;
+        }
         sdcard.used = 0;
 
         DelayThread(1000 * 1000);
@@ -847,12 +883,9 @@ int module_start(int argc, char *argv[])
      * - 0xff 0xff 0xc1 0x3f
      * - followed by an infinite amount of 0xff
      */
-    if (CONN_STAT_CDC3(inl_sio2_stat70_get())) {
-        mx_sio2_lock(INTR_NONE);
-        (void)mx_sio2_rx_pio((void *)&rv, 4);
-        mx_sio2_unlock(INTR_NONE);
-    } else
-        bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_ABSENT);
+    mx_sio2_lock(INTR_NONE);
+    (void)mx_sio2_rx_pio((void *)&rv, 4);
+    mx_sio2_unlock(INTR_NONE);
 
     /* create SD card detection thread */
     thread.attr      = TH_C;

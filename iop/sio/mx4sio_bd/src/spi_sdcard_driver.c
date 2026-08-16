@@ -150,6 +150,19 @@ uint16_t spisd_read_status_register()
     return response;
 }
 
+int spisd_probe_card(int initialize)
+{
+    if (initialize) {
+        mx_sio2_set_baud(SIO2_BAUD_DIV_SLOW);
+
+        // 首次探测前发送至少74个时钟，使TF卡进入SPI初始化状态。
+        for (int i = 0; i < 16; i++)
+            mx_sio2_write_dummy();
+    }
+
+    return (spisd_send_cmd(CMD0, 0) == SPISD_R1_IDLE_FLAG) ? SPISD_RESULT_OK : SPISD_RESULT_NO_CARD;
+}
+
 int spisd_init_card()
 {
     uint16_t timeout = WAIT_IDLE_TIMEOUT;
