@@ -16,5 +16,8 @@ SUBDIRS = \
 	ps2snd \
 	rspu2drv
 
+# rspu2drv 必须等待两个静态库完成，避免并行构建重复进入同一目录。
+all-rspu2drv: all-libsnd2 all-libspu2
+
 include $(PS2SDKSRC)/Defs.make
 include $(PS2SDKSRC)/Rules.make
