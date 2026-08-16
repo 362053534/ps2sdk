@@ -20,7 +20,18 @@
 #include <bdm.h>
 #include <usbhdfsd-common.h>
 
+typedef struct bd_defrag_cursor {
+    struct block_device *bd;
+    struct bd_fragment *fraglist;
+    u32 fragcount;
+    u32 fragment;
+    u64 offset;
+} bd_defrag_cursor_t;
 
+/* 游标由调用方持有；首次使用以及设备或碎片表变化后必须重置。 */
+extern void bd_defrag_cursor_reset(bd_defrag_cursor_t *cursor);
+extern int bd_defrag_read_cached(struct block_device *bd, u32 fragcount, struct bd_fragment *fraglist,
+                                 u64 sector, void *buffer, u16 count, bd_defrag_cursor_t *cursor);
 extern int bd_defrag_read(struct block_device* bd, u32 fragcount, struct bd_fragment* fraglist, u64 sector, void* buffer, u16 count);
 extern int bd_defrag_write(struct block_device* bd, u32 fragcount, struct bd_fragment* fraglist, u64 sector, const void* buffer, u16 count);
 
