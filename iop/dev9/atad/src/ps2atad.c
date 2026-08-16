@@ -1351,6 +1351,7 @@ static int ata_init_devices(ata_devinfo_t *devinfo)
     u32 total_sectors_nonlba48, total_sectors_lba48;
 #ifdef ATA_ENABLE_BDM
     int deviceRegistered = 0;
+    u64 total_sectors_lba48_bdm;
 #endif
 
     if ((res = sceAtaSoftReset()) != 0)
@@ -1406,11 +1407,20 @@ static int ata_init_devices(ata_devinfo_t *devinfo)
 
         /* Save the total sector counts before we overwrite ata_param with the value of Sony identify drive command. */
         total_sectors_nonlba48 = (ata_param[ATA_ID_SECTOTAL_HI] << 16) | ata_param[ATA_ID_SECTOTAL_LO];
-        if (ata_param[ATA_ID_48BIT_SECTOTAL_HI]) {
+        if (ata_param[ATA_ID_48BIT_SECTOTAL_HI] || ata_param[ATA_ID_48BIT_SECTOTAL_UI]) {
             total_sectors_lba48 = 0xffffffff;
         } else {
             total_sectors_lba48 = (ata_param[ATA_ID_48BIT_SECTOTAL_MI] << 16) | ata_param[ATA_ID_48BIT_SECTOTAL_LO];
         }
+#ifdef ATA_ENABLE_BDM
+        /* 传统ATAD接口只能保存32位容量；BDM单独保留IDENTIFY中的完整48位扇区数。 */
+        total_sectors_lba48_bdm = (u64)ata_param[ATA_ID_48BIT_SECTOTAL_LO] |
+                                  ((u64)ata_param[ATA_ID_48BIT_SECTOTAL_MI] << 16) |
+                                  ((u64)ata_param[ATA_ID_48BIT_SECTOTAL_HI] << 32) |
+                                  ((u64)ata_param[ATA_ID_48BIT_SECTOTAL_UI] << 48);
+        if (total_sectors_lba48_bdm == 0 || total_sectors_lba48_bdm > 0x0000ffffffffffffULL)
+            total_sectors_lba48_bdm = total_sectors_nonlba48;
+#endif
 
         devinfo[i].security_status = ata_param[ATA_ID_SECURITY_STATUS];
 
@@ -1466,7 +1476,7 @@ static int ata_init_devices(ata_devinfo_t *devinfo)
 #endif
 
 #ifdef ATA_ENABLE_BDM
-        g_ata_bd[i].sectorCount = devinfo[i].total_sectors_lba48;
+        g_ata_bd[i].sectorCount = devinfo[i].lba48 ? total_sectors_lba48_bdm : total_sectors_nonlba48;
         bdm_connect_bd(&g_ata_bd[i]);
         deviceRegistered = 1;
 #endif
