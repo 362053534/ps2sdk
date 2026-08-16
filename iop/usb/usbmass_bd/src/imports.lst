@@ -20,6 +20,8 @@ I_CreateThread
 I_StartThread
 I_DeleteThread
 I_DelayThread
+I_GetSystemTime
+I_USec2SysClock
 thbase_IMPORTS_end
 
 thsemap_IMPORTS_start

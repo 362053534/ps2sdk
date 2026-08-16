@@ -13,7 +13,9 @@
 /* Must cast to u32 before shift; signed <<24 breaks last_lba >= 0x80000000 (~1TiB+). */
 #define getBI32(__buf) ((((u32)(((u8 *)(__buf))[0])) << 24) | (((u32)(((u8 *)(__buf))[1])) << 16) | (((u32)(((u8 *)(__buf))[2])) << 8) | ((u32)(((u8 *)(__buf))[3])))
 #define getBI64(__buf) (((u64)getBI32(__buf) << 32) | (u64)getBI32(((u8 *)(__buf)) + 4))
-#define SCSI_MAX_RETRIES 16
+#define SCSI_WARMUP_MAX_RETRIES 16
+#define SCSI_IO_MAX_RETRIES     32
+#define SCSI_IO_RETRY_TIMEOUT_US 2000000
 
 typedef struct _inquiry_data
 {
@@ -165,6 +167,76 @@ static int scsi_cmd_rw_sector(struct block_device *bd, u64 lba, const void *buff
     return scsi->queue_cmd(scsi, comData, cmd_len, (void *)buffer, bd->sectorSize * sectorCount, write);
 }
 
+static int scsi_should_retry(struct block_device *bd, int stat)
+{
+    sense_data sd;
+    u8 error_code;
+    u8 sense_key;
+    u8 add_sense_code;
+
+    // 负值表示传输层失败，只执行有限次数重试，不再追加Sense命令。
+    if (stat < 0)
+        return 1;
+
+    memset(&sd, 0, sizeof(sd));
+    if (scsi_cmd_request_sense(bd, &sd, sizeof(sd)) != 0)
+        return 1;
+
+    error_code = sd.error_code & 0x7f;
+    if (error_code == 0x70 || error_code == 0x71) {
+        sense_key = sd.sense_key & 0x0f;
+        add_sense_code = sd.add_sense_code;
+    } else if (error_code == 0x72 || error_code == 0x73) {
+        sense_key = sd.res1 & 0x0f;
+        add_sense_code = sd.sense_key;
+    } else {
+        return 1;
+    }
+
+    if (sense_key == 0x02 && add_sense_code == 0x3a)
+        return 0;
+
+    // 只阻止明确无法通过立即重试恢复的错误，未知状态仍保留有限重试。
+    return sense_key != 0x03 && sense_key != 0x05 && sense_key != 0x07 &&
+           sense_key != 0x08 && sense_key != 0x0d && sense_key != 0x0e;
+}
+
+static int scsi_cmd_rw_sector_retry(struct block_device *bd, u64 lba, const void *buffer, unsigned short int sectorCount,
+                                    unsigned int write, u32 *retry_count, u64 *retry_deadline)
+{
+    iop_sys_clock_t current;
+    iop_sys_clock_t timeout;
+    u64 current_time;
+    int stat;
+
+    stat = scsi_cmd_rw_sector(bd, lba, buffer, sectorCount, write);
+    if (stat == 0)
+        return 0;
+
+    if (*retry_deadline == 0) {
+        GetSystemTime(&current);
+        USec2SysClock(SCSI_IO_RETRY_TIMEOUT_US, &timeout);
+        *retry_deadline = (((u64)current.hi << 32) | current.lo) + (((u64)timeout.hi << 32) | timeout.lo);
+    }
+
+    while (scsi_should_retry(bd, stat)) {
+        if (*retry_count >= SCSI_IO_MAX_RETRIES)
+            break;
+
+        GetSystemTime(&current);
+        current_time = ((u64)current.hi << 32) | current.lo;
+        if (current_time >= *retry_deadline)
+            break;
+
+        (*retry_count)++;
+        stat = scsi_cmd_rw_sector(bd, lba, buffer, sectorCount, write);
+        if (stat == 0)
+            break;
+    }
+
+    return stat;
+}
+
 //
 // Private
 //
@@ -195,7 +267,7 @@ static int scsi_warmup(struct block_device *bd)
     M_PRINTF("Product: %.16s\n", id.product);
     M_PRINTF("Revision: %.4s\n", id.revision);
 
-    retries = SCSI_MAX_RETRIES;
+    retries = SCSI_WARMUP_MAX_RETRIES;
     while ((stat = scsi_cmd_test_unit_ready(bd)) != 0) {
         M_PRINTF("ERROR: scsi_cmd_test_unit_ready %d\n", stat);
 
@@ -263,7 +335,9 @@ static int scsi_read(struct block_device *bd, u64 sector, void *buffer, u16 coun
 {
     struct scsi_interface *scsi = (struct scsi_interface *)bd->priv;
     u16 sc_remaining            = count;
-    int retries;
+    u32 retry_count             = 0;
+    u64 retry_deadline          = 0;
+    int stat;
 
     DEBUG_U64_2XU32(sector);
     M_DEBUG("%s: sector=0x%08x%08x, count=%d\n", __func__, sector_u32[1], sector_u32[0], count);
@@ -271,14 +345,11 @@ static int scsi_read(struct block_device *bd, u64 sector, void *buffer, u16 coun
     while (sc_remaining > 0) {
         u16 sc = sc_remaining > scsi->max_sectors ? scsi->max_sectors : sc_remaining;
 
-        for (retries = SCSI_MAX_RETRIES; retries > 0; retries--) {
-            if (scsi_cmd_rw_sector(bd, sector, buffer, sc, 0) == 0)
-                break;
-        }
+        stat = scsi_cmd_rw_sector_retry(bd, sector, buffer, sc, 0, &retry_count, &retry_deadline);
 
-        if (retries == 0) {
+        if (stat != 0) {
             U64_2XU32(sector);
-            M_PRINTF("ERROR: unable to read sector after %d tries (sector=0x%08x%08x, count=%d)\n", SCSI_MAX_RETRIES, sector_u32[1], sector_u32[0], count);
+            M_PRINTF("ERROR: unable to read sector after %u retries (sector=0x%08x%08x, count=%d)\n", retry_count, sector_u32[1], sector_u32[0], count);
             return -EIO;
         }
 
@@ -296,7 +367,9 @@ static int scsi_write(struct block_device *bd, u64 sector, const void *buffer, u
     u16 sc_remaining            = count;
     unsigned int sectorSize     = bd->sectorSize;
     void *misalign_buffer       = NULL;
-    int retries;
+    u32 retry_count             = 0;
+    u64 retry_deadline          = 0;
+    int stat;
 
     DEBUG_U64_2XU32(sector);
     M_DEBUG("%s: sector=0x%08x%08x, count=%d\n", __func__, sector_u32[1], sector_u32[0], count);
@@ -321,14 +394,11 @@ static int scsi_write(struct block_device *bd, u64 sector, const void *buffer, u
             sc = 1;
         }
 
-        for (retries = SCSI_MAX_RETRIES; retries > 0; retries--) {
-            if (scsi_cmd_rw_sector(bd, sector, dst_buffer, sc, 1) == 0)
-                break;
-        }
+        stat = scsi_cmd_rw_sector_retry(bd, sector, dst_buffer, sc, 1, &retry_count, &retry_deadline);
 
-        if (retries == 0) {
+        if (stat != 0) {
             U64_2XU32(sector);
-            M_PRINTF("ERROR: unable to write sector after %d tries (sector=0x%08x%08x, count=%d)\n", SCSI_MAX_RETRIES, sector_u32[1], sector_u32[0], count);
+            M_PRINTF("ERROR: unable to write sector after %u retries (sector=0x%08x%08x, count=%d)\n", retry_count, sector_u32[1], sector_u32[0], count);
             return -EIO;
         }
 
