@@ -39,8 +39,8 @@ release-iop-lib:
 # Any irx files should go to iop/irx
 #
 
-release-iop-bin:
-	@if test $(IOP_BIN) ; then \
+release-iop-bin: $(IOP_BIN) | release-iop-dirs
+	@set -e; if test -n "$(strip $(IOP_BIN))" ; then \
 	   $(PRINTF) 'Installing %s to %s/iop/irx\n' $(IOP_BIN) $(PS2SDK) ; \
 	   cp -f $(IOP_BIN) $(PS2SDK)/iop/irx/ ; \
 	   chmod 644 $(PS2SDK)/iop/irx/$$(basename $(IOP_BIN)) ; \
