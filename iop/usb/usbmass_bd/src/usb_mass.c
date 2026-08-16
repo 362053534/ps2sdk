@@ -768,7 +768,7 @@ static int usb_mass_disconnect(int devId)
 
 static void usb_mass_update(void *arg)
 {
-    int i;
+    int i, retry;
 
     (void)arg;
 
@@ -780,6 +780,18 @@ static void usb_mass_update(void *arg)
 
         // Wait for event from USBD thread
         WaitSema(usb_mass_update_sema);
+
+        for (retry = 0; retry <= USB_PROBE_MAX_RETRIES; retry++) {
+            for (i = 0; i < NUM_DEVICES; i++) {
+                if (g_mass_device[i].status & USBMASS_DEV_STAT_CONN)
+                    break;
+            }
+            if (i < NUM_DEVICES || retry == USB_PROBE_MAX_RETRIES)
+                break;
+            DelayThread(100000);
+        }
+        if (i == NUM_DEVICES)
+            bdm_set_probe_state(BDM_PROBE_TYPE_USB, usb_probe_error ? BDM_PROBE_STATE_ERROR : BDM_PROBE_STATE_ABSENT);
 
         // Determine which devices are new and need to be connected.
         {
@@ -941,17 +953,7 @@ int usb_mass_init(void)
         return 0;
     }
 
-    for (ret = 0; ret <= USB_PROBE_MAX_RETRIES; ret++) {
-        for (i = 0; i < NUM_DEVICES; i++) {
-            if (g_mass_device[i].status & USBMASS_DEV_STAT_CONN)
-                break;
-        }
-        if (i < NUM_DEVICES || ret == USB_PROBE_MAX_RETRIES)
-            break;
-        DelayThread(100000);
-    }
-    if (i == NUM_DEVICES)
-        bdm_set_probe_state(BDM_PROBE_TYPE_USB, usb_probe_error ? BDM_PROBE_STATE_ERROR : BDM_PROBE_STATE_ABSENT);
+    SignalSema(usb_mass_update_sema);
 
     return 0;
 }
