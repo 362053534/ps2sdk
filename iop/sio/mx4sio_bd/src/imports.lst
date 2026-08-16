@@ -44,6 +44,9 @@ I_ExitDeleteThread
 I_DeleteThread
 I_DelayThread
 I_ReferThreadStatus
+I_SetAlarm
+I_CancelAlarm
+I_USec2SysClock
 thbase_IMPORTS_end
 
 thevent_IMPORTS_start
@@ -52,7 +55,7 @@ I_DeleteEventFlag
 //I_SetEventFlag
 I_iSetEventFlag
 I_ClearEventFlag
-I_PollEventFlag
+I_WaitEventFlag
 thevent_IMPORTS_end
 
 thsemap_IMPORTS_start

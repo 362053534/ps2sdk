@@ -28,6 +28,7 @@
 /* interrupt event flags */
 #define EF_SIO2_INTR_REVERSE  0x00000100
 #define EF_SIO2_INTR_COMPLETE 0x00000200
+#define EF_SIO2_INTR_TIMEOUT  0x00000400
 
 /* interrupt types */
 #define INTR_NONE 0x0

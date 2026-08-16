@@ -446,17 +446,35 @@ int spisd_recover()
     return SPISD_RESULT_ERROR;
 }
 
+static unsigned int spisd_dma_timeout(void *arg)
+{
+    iSetEventFlag((int)arg, EF_SIO2_INTR_TIMEOUT);
+    return 0;
+}
+
 static int spisd_wait_dma_event(uint32_t bits, uint32_t *resbits)
 {
-    uint32_t polls;
+    iop_sys_clock_t timeout;
+    void *alarm_arg = (void *)sio2_event_flag;
+    int result;
 
-    for (polls = 0; polls < DMA_EVENT_TIMEOUT_POLLS; polls++) {
-        if (PollEventFlag(sio2_event_flag, bits, 1, resbits) == 0)
-            return SPISD_RESULT_OK;
-        DelayThread(DMA_EVENT_POLL_DELAY);
-    }
+    /* 清除上一轮可能留下的超时标志。 */
+    ClearEventFlag(sio2_event_flag, ~EF_SIO2_INTR_TIMEOUT);
 
-    return SPISD_RESULT_TIMEOUT;
+    USec2SysClock(DMA_EVENT_TIMEOUT, &timeout);
+    if (SetAlarm(&timeout, spisd_dma_timeout, alarm_arg) != 0)
+        return SPISD_RESULT_TIMEOUT;
+
+    result = WaitEventFlag(sio2_event_flag, bits | EF_SIO2_INTR_TIMEOUT, WEF_OR, resbits);
+
+    /* 回调和参数必须与设置闹钟时完全一致。 */
+    CancelAlarm(spisd_dma_timeout, alarm_arg);
+    ClearEventFlag(sio2_event_flag, ~EF_SIO2_INTR_TIMEOUT);
+
+    if (result != 0 || (*resbits & bits) == 0)
+        return SPISD_RESULT_TIMEOUT;
+
+    return SPISD_RESULT_OK;
 }
 
 /* read functions */

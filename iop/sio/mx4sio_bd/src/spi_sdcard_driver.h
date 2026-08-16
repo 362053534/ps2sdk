@@ -4,10 +4,9 @@
 #include <bdm.h>
 #include <stdint.h>
 
-#define READ_TOKEN_TIMEOUT      4000
-#define DMA_EVENT_POLL_DELAY    1000
-#define DMA_EVENT_TIMEOUT_POLLS 3000
-#define SECTOR_SIZE             512
+#define READ_TOKEN_TIMEOUT 4000
+#define DMA_EVENT_TIMEOUT  3000000
+#define SECTOR_SIZE        512
 
 #define CMD_ABORT_NO_READ_TOKEN    0x1
 #define CMD_ABORT_CRC16_INVALID    0x2
