@@ -17,7 +17,7 @@
 #include "module_debug.h"
 
 #define SBP2_COMMAND_TIMEOUT 4
-#define ILINK_PROBE_MAX_RETRIES 20
+#define ILINK_PROBE_MAX_RETRIES 10
 
 #define MAX_DEVICES 5
 static struct SBP2Device SBP2Devices[MAX_DEVICES];
@@ -155,7 +155,7 @@ void init_ieee1394DiskDriver(void)
     for (i = 0; i < ILINK_PROBE_MAX_RETRIES && !iLinkBusResetReceived; i++)
         DelayThread(100000);
     if (!iLinkBusResetReceived)
-        bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_ERROR);
+        bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_ABSENT);
 }
 
 static int initConfigureSBP2Device(struct SBP2Device *dev)
