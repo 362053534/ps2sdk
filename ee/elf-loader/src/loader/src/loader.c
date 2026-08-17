@@ -89,32 +89,38 @@ int main(int argc, char *argv[])
 	elfdata.epc = 0;
 
 	SET_GS_BGCOLOUR(WHITE_BG);
-	// arg[0] partition if exists, otherwise is ""
-	// arg[1]=path to ELF
-	if (argc < 2) {  
+	// arg[0] 分区，没有则为 ""
+	// arg[1] ELF 路径，或 mem:XXXXXXXX
+	// arg[2] 复位标志（"0" 保留 IOP，其余值复位）
+	// arg[3+] 调用方参数（mem: 启动时 argv[3] 是 POPStarter 的虚拟 ELF 名）
+	if (argc < 3) {
 		SET_GS_BGCOLOUR(RED_BG);
 		return -EINVAL;
 	}
 
-	char *new_argv[argc - 1];
+	int reset = (argv[2][0] != '0');
+
+	char *new_argv[argc - 2];
 	int fullPath_length = 1 + strlen(argv[0]) + strlen(argv[1]);
 	char fullPath[fullPath_length];
+	char virtualName[256];
 	strcpy(fullPath, argv[0]);
 	strcat(fullPath, argv[1]);
-	// final new_argv[0] is partition + path to elf
-	if (!strncmp(argv[1], "mem:", 4) && argc > 2) {
-		// POPStarter's direct launch convention requires the virtual ELF name as argv[0].
-		new_argv[0] = argv[2];
+	if (!strncmp(argv[1], "mem:", 4) && argc > 3) {
+		// POPStarter 直接启动约定：目标 ELF 的 argv[0] 必须是虚拟 ELF 名。
+		strncpy(virtualName, argv[3], sizeof(virtualName) - 1);
+		virtualName[sizeof(virtualName) - 1] = '\0';
+		new_argv[0] = virtualName;
+		for (i = 4; i < argc; i++) {
+			new_argv[i - 3] = argv[i];
+		}
+		new_argc = argc - 3;
+	} else {
+		new_argv[0] = fullPath;
 		for (i = 3; i < argc; i++) {
 			new_argv[i - 2] = argv[i];
 		}
 		new_argc = argc - 2;
-	} else {
-		new_argv[0] = fullPath;
-		for (i = 2; i < argc; i++) {
-			new_argv[i - 1] = argv[i];
-		}
-		new_argc = argc - 1;
 	}
 
 	SET_GS_BGCOLOUR(CYAN_BG);
@@ -157,20 +163,22 @@ int main(int argc, char *argv[])
 	if (ret == 0 && elfdata.epc != 0) {
 		SET_GS_BGCOLOUR(YELLOW_BG);
 
-		// Let's reset IOP because ELF was already loaded in memory
-		while(!SifIopReset(NULL, 0)){};
-		while (!SifIopSync()) {};
+		if (reset) {
+			// Let's reset IOP because ELF was already loaded in memory
+			while(!SifIopReset(NULL, 0)){};
+			while (!SifIopSync()) {};
 
-		SET_GS_BGCOLOUR(ORANGE_BG);
+			SET_GS_BGCOLOUR(ORANGE_BG);
 
-        SifInitRpc(0);
-        // Load modules.
-        SifLoadFileInit();
-        SifLoadModule("rom0:SIO2MAN", 0, NULL);
-        SifLoadModule("rom0:MCMAN", 0, NULL);
-        SifLoadModule("rom0:MCSERV", 0, NULL);
-        SifLoadFileExit();
-        SifExitRpc();
+			SifInitRpc(0);
+			// Load modules.
+			SifLoadFileInit();
+			SifLoadModule("rom0:SIO2MAN", 0, NULL);
+			SifLoadModule("rom0:MCMAN", 0, NULL);
+			SifLoadModule("rom0:MCSERV", 0, NULL);
+			SifLoadFileExit();
+			SifExitRpc();
+		}
 
 		SET_GS_BGCOLOUR(BROWN_BG);
 

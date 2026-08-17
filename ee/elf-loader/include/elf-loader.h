@@ -50,8 +50,16 @@ extern int LoadELFFromFile(const char *filename, int argc, char *argv[]);
  */
 extern int LoadELFFromFileWithPartition(const char *filename, const char *partition, int argc, char *argv[]);
 
-// Load an ELF that is already present in EE memory.
+/** 与 LoadELFFromFileWithPartition 相同，但 stub 不复位 IOP。
+ *  已驻留的 IOP 模块（例如 smbman）对即将启动的 ELF 仍然可用。
+ */
+extern int LoadELFFromFileWithPartitionNoReset(const char *filename, const char *partition, int argc, char *argv[]);
+
+// 从已经在 EE 内存中的 ELF 启动。
 extern int LoadELFFromMemory(const void *elf, int argc, char *argv[]);
+
+/** 与 LoadELFFromMemory 相同，但 stub 不复位 IOP。 */
+extern int LoadELFFromMemoryNoReset(const void *elf, int argc, char *argv[]);
 
 #ifdef __cplusplus
 }

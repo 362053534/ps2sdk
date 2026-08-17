@@ -51,29 +51,29 @@ static void wipe_bramMem(void) {
 	}
 }
 
-int LoadELFFromFileWithPartition(const char *filename, const char *partition, int argc, char *argv[]) {
+static int LoadELFFromFileResetCommon(const char *filename, const char *partition, int reset, int argc, char *argv[]) {
 	u8 *boot_elf;
 	elf_header_t *eh;
 	elf_pheader_t *eph;
 	void *pdata;
 	int i;
-	int new_argc = argc + 2;
-	
-	// We need to check that the ELF file before continue
+	int new_argc = argc + 3;
+
+	// mem:XXXXXXXX 是 EE 内存指针，不是文件路径。
 	if (strncmp(filename, "mem:", 4) && !file_exists(filename)) {
 		return -1; // ELF file doesn't exists
 	}
-	// ELF Exists
 	wipe_bramMem();
 
-	// Preparing filename and partition to be sent in the argv
-	char *new_argv[argc + 2];
+	// stub 参数：[0]=分区 [1]=文件名 [2]=是否复位 IOP [3+]=调用方参数
+	char *new_argv[argc + 3];
 	new_argv[0] = partition != NULL ? (char *)partition : "";
 	new_argv[1] = (char *)filename;
+	new_argv[2] = reset ? "1" : "0";
 	for (i = 0; i < argc; i++) {
-		new_argv[i + 2] = argv[i];
+		new_argv[i + 3] = argv[i];
 	}
-	
+
 	/* NB: LOADER.ELF is embedded  */
 	boot_elf = (u8 *)loader_elf;
 	eh = (elf_header_t *)boot_elf;
@@ -98,8 +98,16 @@ int LoadELFFromFileWithPartition(const char *filename, const char *partition, in
 	SifExitRpc();
 	FlushCache(0);
 	FlushCache(2);
-	
+
 	return ExecPS2((void *)eh->entry, NULL, new_argc, new_argv);
+}
+
+int LoadELFFromFileWithPartition(const char *filename, const char *partition, int argc, char *argv[]) {
+	return LoadELFFromFileResetCommon(filename, partition, 1, argc, argv);
+}
+
+int LoadELFFromFileWithPartitionNoReset(const char *filename, const char *partition, int argc, char *argv[]) {
+	return LoadELFFromFileResetCommon(filename, partition, 0, argc, argv);
 }
 
 int LoadELFFromFile(const char *filename, int argc, char *argv[])
@@ -107,11 +115,21 @@ int LoadELFFromFile(const char *filename, int argc, char *argv[])
 	return LoadELFFromFileWithPartition(filename, NULL, argc, argv);
 }
 
-int LoadELFFromMemory(const void *elf, int argc, char *argv[])
+static int LoadELFFromMemoryCommon(const void *elf, int reset, int argc, char *argv[])
 {
 	char filename[13];
 
 	snprintf(filename, sizeof(filename), "mem:%08X", (u32)elf);
-	return LoadELFFromFileWithPartition(filename, NULL, argc, argv);
+	return LoadELFFromFileResetCommon(filename, NULL, reset, argc, argv);
+}
+
+int LoadELFFromMemory(const void *elf, int argc, char *argv[])
+{
+	return LoadELFFromMemoryCommon(elf, 1, argc, argv);
+}
+
+int LoadELFFromMemoryNoReset(const void *elf, int argc, char *argv[])
+{
+	return LoadELFFromMemoryCommon(elf, 0, argc, argv);
 }
 
