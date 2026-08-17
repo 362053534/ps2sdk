@@ -17,6 +17,8 @@
 #include "iLinkman.h"
 #include "iLink_internal.h"
 
+#define ILINK_HW_MAX_RETRIES 10000
+
 extern struct ILINKMemMap *ILINKRegisterBase;
 extern struct DMAChannelRegBlock *iLinkDMACRegs;
 extern struct DMARRegBlock *iLinkDMARRegs;
@@ -119,6 +121,8 @@ static void ShutDownDMAChannels(void)
 
 int iLinkResetHW(void)
 {
+    int retries;
+
     ShutDownDMAChannels();
 
     /* Turn off, and then turn back on the LINK and PHY. If this is not done, the iLink hardware might not function correctly on some consoles. :( */
@@ -131,8 +135,10 @@ int iLinkResetHW(void)
         ILINKRegisterBase->ctrl2 = iLink_CTRL2_LPSEn;
 
     /* Wait for the clock to stabilize. */
-    while (!(ILINKRegisterBase->ctrl2 & iLink_CTRL2_SOK))
+    for (retries = 0; retries < ILINK_HW_MAX_RETRIES && !(ILINKRegisterBase->ctrl2 & iLink_CTRL2_SOK); retries++)
         DelayThread(50);
+    if (retries == ILINK_HW_MAX_RETRIES)
+        return -1;
 
     return 0;
 }

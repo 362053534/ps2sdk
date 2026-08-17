@@ -136,7 +136,11 @@ void init_ieee1394DiskDriver(void)
         bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_ERROR);
         return;
     }
+    iLinkSetTrCallbackHandler(&ieee1394_callback);
+    iLinkBusResetReceived = 0;
+
     if (StartThread(iLinkIntrCBThreadID, NULL) < 0) {
+        iLinkSetTrCallbackHandler(NULL);
         DeleteThread(iLinkIntrCBThreadID);
         DeleteEventFlag(sbp2_event_flag);
         free(writeBuffer);
@@ -145,17 +149,7 @@ void init_ieee1394DiskDriver(void)
         return;
     }
 
-    iLinkSetTrCallbackHandler(&ieee1394_callback);
-    iLinkBusResetReceived = 0;
-
     M_DEBUG("Threads created and started.\n");
-
-    iLinkEnableSBus();
-
-    for (i = 0; i < ILINK_PROBE_MAX_RETRIES && !iLinkBusResetReceived; i++)
-        DelayThread(100000);
-    if (!iLinkBusResetReceived)
-        bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_ABSENT);
 }
 
 static int initConfigureSBP2Device(struct SBP2Device *dev)
@@ -285,6 +279,13 @@ static void iLinkIntrCBHandlingThread(void *arg)
     };
 
     (void)arg;
+
+    iLinkEnableSBus();
+
+    for (i = 0; i < ILINK_PROBE_MAX_RETRIES && !iLinkBusResetReceived; i++)
+        DelayThread(100000);
+    if (!iLinkBusResetReceived)
+        bdm_set_probe_state(BDM_PROBE_TYPE_ILINK, BDM_PROBE_STATE_ABSENT);
 
     while (1) {
         WaitEventFlag(sbp2_event_flag, BUS_RESET_COMPLETE, WEF_AND | WEF_CLEAR, NULL);

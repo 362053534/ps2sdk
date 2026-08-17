@@ -23,6 +23,7 @@
 #include "iLink_internal.h"
 
 #define MODNAME "iLINK_HW_Manager"
+#define ILINK_BUS_RESET_MAX_RETRIES 10
 IRX_ID(MODNAME, 0x00, 0x98);
 
 /* Global variables. */
@@ -231,6 +232,8 @@ void iLinkDisableSBus(void)
 
 void iLinkResetSBus(void)
 {
+    int retries;
+
     ClearEventFlag(IntrEventFlag, ~(iLinkEventBusReady | iLinkEventGotSELFIDs));
 
     DEBUG_PRINTF("-=Reseting bus=-\n");
@@ -238,7 +241,11 @@ void iLinkResetSBus(void)
     iLinkPHYBusReset();
 
     DEBUG_PRINTF("-=Waiting for the serial bus to be ready=-\n");
-    WaitEventFlag(IntrEventFlag, iLinkEventBusReady | iLinkEventGotSELFIDs, WEF_AND, NULL); /* Wait for the bus to be completely reset. */
+    for (retries = 0; retries < ILINK_BUS_RESET_MAX_RETRIES; retries++) {
+        if (PollEventFlag(IntrEventFlag, iLinkEventBusReady | iLinkEventGotSELFIDs, WEF_AND, NULL) == 0)
+            break;
+        DelayThread(100000);
+    }
     DEBUG_PRINTF("-=Bus reset and ready=-\n");
 }
 
