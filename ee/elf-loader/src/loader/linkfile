@@ -14,7 +14,7 @@ ENTRY(__start);
 
 MEMORY {
 	bios	: ORIGIN = 0x00000000, LENGTH = 592K /* 0x00000000 - 0x00094000: BIOS memory & patched area */
-	bram	: ORIGIN = 0x00094000, LENGTH = 432K /* 0x00094000 - 0x00100000: BIOS unused memory */
+	bram	: ORIGIN = 0x00095000, LENGTH = 428K /* 0x00095000 - 0x00100000: BIOS unused memory */
 	gram	: ORIGIN = 0x00100000, LENGTH =  31M /* 0x00100000 - 0x02000000: GAME memory */
 
 	high	: ORIGIN = 0x01ee8000, LENGTH = 1120K /* 0x01ee8000 - 0x02000000: */

@@ -61,6 +61,9 @@ extern int LoadELFFromMemory(const void *elf, int argc, char *argv[]);
 /** 与 LoadELFFromMemory 相同，但 stub 不复位 IOP。 */
 extern int LoadELFFromMemoryNoReset(const void *elf, int argc, char *argv[]);
 
+/** 在不复位 IOP 的同时，将一小段数据保留到下一程序可访问的 EE 低端内存。 */
+extern int LoadELFFromMemoryNoResetWithResidentData(const void *elf, const void *residentData, unsigned int residentSize, int argc, char *argv[]);
+
 #ifdef __cplusplus
 }
 #endif

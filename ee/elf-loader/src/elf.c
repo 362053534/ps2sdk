@@ -26,6 +26,9 @@ extern int size_loader_elf;
 #define ELF_MAGIC 0x464c457f
 #define ELF_PT_LOAD 1
 
+#define ELF_LOADER_RESIDENT_ADDRESS  0x00094000
+#define ELF_LOADER_RESIDENT_MAX_SIZE 0x00001000
+
 static bool file_exists(const char *filename) {
 	struct stat   buffer;   
 	return (stat (filename, &buffer) == 0);
@@ -51,7 +54,7 @@ static void wipe_bramMem(void) {
 	}
 }
 
-static int LoadELFFromFileResetCommon(const char *filename, const char *partition, int reset, int argc, char *argv[]) {
+static int LoadELFFromFileResetCommon(const char *filename, const char *partition, int reset, const void *residentData, unsigned int residentSize, int argc, char *argv[]) {
 	u8 *boot_elf;
 	elf_header_t *eh;
 	elf_pheader_t *eph;
@@ -63,6 +66,8 @@ static int LoadELFFromFileResetCommon(const char *filename, const char *partitio
 	if (strncmp(filename, "mem:", 4) && !file_exists(filename)) {
 		return -1; // ELF file doesn't exists
 	}
+	if ((residentData == NULL && residentSize != 0) || residentSize > ELF_LOADER_RESIDENT_MAX_SIZE)
+		return -1;
 	wipe_bramMem();
 
 	// stub 参数：[0]=分区 [1]=文件名 [2]=是否复位 IOP [3+]=调用方参数
@@ -94,6 +99,10 @@ static int LoadELFFromFileResetCommon(const char *filename, const char *partitio
 			memset((void *)((u8 *)(eph[i].vaddr) + eph[i].filesz), 0, eph[i].memsz - eph[i].filesz);
 	}
 
+	/* stub位于0x00095000以上；最后写入这块保留区，避免旧程序或stub覆盖数据。 */
+	if (residentSize != 0)
+		memcpy((void *)ELF_LOADER_RESIDENT_ADDRESS, residentData, residentSize);
+
 	/* Let's go.  */
 	SifExitRpc();
 	FlushCache(0);
@@ -103,11 +112,11 @@ static int LoadELFFromFileResetCommon(const char *filename, const char *partitio
 }
 
 int LoadELFFromFileWithPartition(const char *filename, const char *partition, int argc, char *argv[]) {
-	return LoadELFFromFileResetCommon(filename, partition, 1, argc, argv);
+	return LoadELFFromFileResetCommon(filename, partition, 1, NULL, 0, argc, argv);
 }
 
 int LoadELFFromFileWithPartitionNoReset(const char *filename, const char *partition, int argc, char *argv[]) {
-	return LoadELFFromFileResetCommon(filename, partition, 0, argc, argv);
+	return LoadELFFromFileResetCommon(filename, partition, 0, NULL, 0, argc, argv);
 }
 
 int LoadELFFromFile(const char *filename, int argc, char *argv[])
@@ -115,21 +124,26 @@ int LoadELFFromFile(const char *filename, int argc, char *argv[])
 	return LoadELFFromFileWithPartition(filename, NULL, argc, argv);
 }
 
-static int LoadELFFromMemoryCommon(const void *elf, int reset, int argc, char *argv[])
+static int LoadELFFromMemoryCommon(const void *elf, int reset, const void *residentData, unsigned int residentSize, int argc, char *argv[])
 {
 	char filename[13];
 
 	snprintf(filename, sizeof(filename), "mem:%08X", (u32)elf);
-	return LoadELFFromFileResetCommon(filename, NULL, reset, argc, argv);
+	return LoadELFFromFileResetCommon(filename, NULL, reset, residentData, residentSize, argc, argv);
 }
 
 int LoadELFFromMemory(const void *elf, int argc, char *argv[])
 {
-	return LoadELFFromMemoryCommon(elf, 1, argc, argv);
+	return LoadELFFromMemoryCommon(elf, 1, NULL, 0, argc, argv);
 }
 
 int LoadELFFromMemoryNoReset(const void *elf, int argc, char *argv[])
 {
-	return LoadELFFromMemoryCommon(elf, 0, argc, argv);
+	return LoadELFFromMemoryCommon(elf, 0, NULL, 0, argc, argv);
+}
+
+int LoadELFFromMemoryNoResetWithResidentData(const void *elf, const void *residentData, unsigned int residentSize, int argc, char *argv[])
+{
+	return LoadELFFromMemoryCommon(elf, 0, residentData, residentSize, argc, argv);
 }
 
