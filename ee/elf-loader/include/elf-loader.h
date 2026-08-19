@@ -20,6 +20,27 @@
 extern "C" {
 #endif
 
+#define ELF_LOADER_RESIDENT_COPY_TABLE_OFFSET 0x0300
+#define ELF_LOADER_RESIDENT_COPY_MAGIC        0x59435043
+#define ELF_LOADER_RESIDENT_COPY_VERSION      1
+#define ELF_LOADER_RESIDENT_COPY_MAX_COUNT    4
+
+typedef struct
+{
+    const void *source;
+    void *destination;
+    unsigned int size;
+} elf_loader_resident_copy_entry_t;
+
+typedef struct
+{
+    unsigned int magic;
+    unsigned int version;
+    unsigned int count;
+    elf_loader_resident_copy_entry_t entries[ELF_LOADER_RESIDENT_COPY_MAX_COUNT];
+    unsigned int checksum;
+} elf_loader_resident_copy_table_t;
+
 // Before call this method be sure that you have previously called sbv_patch_disable_prefix_check();
 extern int LoadELFFromFile(const char *filename, int argc, char *argv[]);
 

@@ -17,11 +17,13 @@
 #include <sifrpc.h>
 #include <errno.h>
 #include <ps2sdkapi.h>
+#include "../../../include/elf-loader.h"
 
 #include "../../elf.h"
 
 #define ELF_MAGIC 0x464c457f
 #define ELF_PT_LOAD 1
+#define ELF_LOADER_RESIDENT_ADDRESS 0x00094000
 
 #ifdef LOADER_ENABLE_DEBUG_COLORS
 #define SET_GS_BGCOLOUR(colour) {*((volatile unsigned long int *)0x120000E0) = colour;}
@@ -72,6 +74,62 @@ static void wipeUserMem(void)
 			"\tsq $0, 16(%0) \n"
 			"\tsq $0, 32(%0) \n"
 			"\tsq $0, 48(%0) \n" ::"r"(i));
+	}
+}
+
+static unsigned int residentCopyChecksum(const void *buffer, unsigned int size)
+{
+	const unsigned char *data = (const unsigned char *)buffer;
+	unsigned int checksum = 2166136261u;
+	unsigned int i;
+
+	for (i = 0; i < size; i++) {
+		checksum ^= data[i];
+		checksum *= 16777619u;
+	}
+
+	return checksum;
+}
+
+static void residentCopyFatal(void)
+{
+	SET_GS_BGCOLOUR(RED_BG);
+	for (;;)
+		asm volatile("nop");
+}
+
+static void applyResidentCopies(void)
+{
+	const elf_loader_resident_copy_table_t *table;
+	unsigned int memorySize;
+	unsigned int i;
+
+	table = (const elf_loader_resident_copy_table_t *)(ELF_LOADER_RESIDENT_ADDRESS + ELF_LOADER_RESIDENT_COPY_TABLE_OFFSET);
+	if (table->magic == 0)
+		return;
+
+	/* 识别到复制表后必须完整通过校验，禁止静默回退。 */
+	if (table->magic != ELF_LOADER_RESIDENT_COPY_MAGIC ||
+		table->version != ELF_LOADER_RESIDENT_COPY_VERSION ||
+		table->count == 0 || table->count > ELF_LOADER_RESIDENT_COPY_MAX_COUNT ||
+		table->checksum != residentCopyChecksum(table, sizeof(*table) - sizeof(table->checksum)))
+		residentCopyFatal();
+
+	memorySize = GetMemorySize();
+	for (i = 0; i < table->count; i++) {
+		const elf_loader_resident_copy_entry_t *entry = &table->entries[i];
+		unsigned int source = (unsigned int)entry->source;
+		unsigned int destination = (unsigned int)entry->destination;
+		unsigned int sourceEnd = source + entry->size;
+		unsigned int destinationEnd = destination + entry->size;
+
+		if (entry->size == 0 || source < 0x00100000 || destination < 0x00100000 ||
+			sourceEnd < source || destinationEnd < destination ||
+			sourceEnd > memorySize || destinationEnd > memorySize ||
+			(source < destinationEnd && destination < sourceEnd))
+			residentCopyFatal();
+
+		memcpy(entry->destination, entry->source, entry->size);
 	}
 }
 
@@ -145,6 +203,9 @@ int main(int argc, char *argv[])
 			if (eph[i].memsz > eph[i].filesz)
 				memset((u8 *)eph[i].vaddr + eph[i].filesz, 0, eph[i].memsz - eph[i].filesz);
 		}
+
+		/* 目标ELF落位后再搬运保留数据，避免覆盖仍在运行的调用方。 */
+		applyResidentCopies();
 
 		elfdata.epc = eh->entry;
 		elfdata.gp = 0;
