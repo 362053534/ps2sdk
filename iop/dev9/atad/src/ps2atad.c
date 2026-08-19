@@ -66,6 +66,7 @@ IRX_ID(MODNAME, 2, 7);
 #define ATA_EV_COMPLETE 2
 #ifdef ATA_ENABLE_BDM
 #define ATA_INIT_MAX_RETRIES 3
+#define ATA_BDM_ASYNC_ARG    "-bdm_async"
 #endif
 
 static int ata_devinfo_init = 0;
@@ -81,6 +82,58 @@ static u8 ata_gamestar_workaround = 0;
 
 /* Local device info kept for drives 0 and 1.  */
 static ata_devinfo_t atad_devinfo[2];
+
+#ifdef ATA_ENABLE_BDM
+static int ata_bdm_async_probe;
+static volatile int ata_bdm_probe_finished;
+static ata_devinfo_t *ata_initialize_device(int device);
+
+static int ata_get_probe_status(void)
+{
+#ifdef ATA_USE_DEV9
+    USE_ATA_REGS;
+    int status = ata_hwport->r_control & 0xff;
+
+    return status == 0x00 || status == 0xff ? -1 : status;
+#else
+    return ATA_STAT_READY;
+#endif
+}
+
+static void ata_bdm_probe_thread(void *arg)
+{
+    ata_devinfo_t *devinfo = NULL;
+    int probeAttempted = 0;
+    int retries;
+    int status = -1;
+
+    (void)arg;
+
+    for (retries = 0; retries < ATA_INIT_MAX_RETRIES; retries++) {
+        status = ata_get_probe_status();
+        if (status >= 0 && !(status & ATA_STAT_BUSY) && (status & ATA_STAT_READY)) {
+            probeAttempted = 1;
+            devinfo = ata_initialize_device(0);
+            if (devinfo)
+                break;
+        }
+
+        if (retries < ATA_INIT_MAX_RETRIES - 1)
+            DelayThread(1000000);
+    }
+
+    if (devinfo)
+        ata_initialize_device(1);
+    else if (status < 0)
+        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ABSENT);
+    else if (!probeAttempted)
+        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ERROR);
+
+    __asm__ __volatile__("" : : : "memory");
+    ata_bdm_probe_finished = 1;
+    ExitDeleteThread();
+}
+#endif
 
 /* Data returned from DEVICE IDENTIFY is kept here.  Also, this is used by the
    security commands to set and unlock the password.  */
@@ -277,6 +330,9 @@ int _start(int argc, char *argv[])
     int res;
 #ifdef ATA_ENABLE_BDM
     int retries;
+    int asyncProbeThreadID = -1;
+    int i;
+    iop_thread_t thread;
 #endif
 
     (void)argc;
@@ -285,6 +341,15 @@ int _start(int argc, char *argv[])
     printf(BANNER, VERSION);
 
 #ifdef ATA_ENABLE_BDM
+    ata_bdm_async_probe = 0;
+    ata_bdm_probe_finished = 0;
+    for (i = 0; i < argc; i++) {
+        if (!strcmp(argv[i], ATA_BDM_ASYNC_ARG)) {
+            ata_bdm_async_probe = 1;
+            break;
+        }
+    }
+
     bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_PENDING);
 #endif
 
@@ -391,25 +456,47 @@ int _start(int argc, char *argv[])
         }
     }
 
-    for (retries = 0; retries < ATA_INIT_MAX_RETRIES; retries++) {
-        if (sceAtaInit(0))
-            break;
-        if (retries < ATA_INIT_MAX_RETRIES - 1)
-            DelayThread(1000000);
+    if (ata_bdm_async_probe) {
+        thread.attr      = TH_C;
+        thread.thread    = ata_bdm_probe_thread;
+        thread.option    = 0;
+        thread.priority  = 0x30;
+        thread.stacksize = 0x1000;
+        asyncProbeThreadID = CreateThread(&thread);
+        if (asyncProbeThreadID < 0) {
+            bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ERROR);
+            goto out;
+        }
+    } else {
+        for (retries = 0; retries < ATA_INIT_MAX_RETRIES; retries++) {
+            if (sceAtaInit(0))
+                break;
+            if (retries < ATA_INIT_MAX_RETRIES - 1)
+                DelayThread(1000000);
+        }
+        if (retries < ATA_INIT_MAX_RETRIES)
+            sceAtaInit(1);
     }
-    if (retries < ATA_INIT_MAX_RETRIES)
-        sceAtaInit(1);
 #endif
 
     if (RegisterLibraryEntries(&_exp_atad) != 0) {
         M_PRINTF("Library is already registered, exiting.\n");
 #ifdef ATA_ENABLE_BDM
+        if (asyncProbeThreadID >= 0)
+            DeleteThread(asyncProbeThreadID);
         bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ERROR);
 #endif
         goto out;
     }
 
     res = MODULE_RESIDENT_END;
+#ifdef ATA_ENABLE_BDM
+    if (asyncProbeThreadID >= 0 && StartThread(asyncProbeThreadID, NULL) < 0) {
+        DeleteThread(asyncProbeThreadID);
+        ata_bdm_probe_finished = 1;
+        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ERROR);
+    }
+#endif
     M_PRINTF("Driver loaded.\n");
 out:
     return res;
@@ -1492,7 +1579,7 @@ static int ata_init_devices(ata_devinfo_t *devinfo)
 }
 
 /* Export 4 */
-ata_devinfo_t *sceAtaInit(int device)
+static ata_devinfo_t *ata_initialize_device(int device)
 {
     if (!ata_devinfo_init) {
         int res;
@@ -1511,6 +1598,20 @@ ata_devinfo_t *sceAtaInit(int device)
     }
 
     return &atad_devinfo[device];
+}
+
+ata_devinfo_t *sceAtaInit(int device)
+{
+#ifdef ATA_ENABLE_BDM
+    if (ata_bdm_async_probe) {
+        if (!ata_bdm_probe_finished || !ata_devinfo_init)
+            return NULL;
+
+        return &atad_devinfo[device];
+    }
+#endif
+
+    return ata_initialize_device(device);
 }
 
 #ifdef ATA_USE_DEV9

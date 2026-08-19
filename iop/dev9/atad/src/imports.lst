@@ -3,6 +3,10 @@ I_RegisterLibraryEntries
 loadcore_IMPORTS_end
 
 thbase_IMPORTS_start
+I_CreateThread
+I_StartThread
+I_DeleteThread
+I_ExitDeleteThread
 I_DelayThread
 I_SetAlarm
 I_CancelAlarm
@@ -23,6 +27,7 @@ stdio_IMPORTS_end
 sysclib_IMPORTS_start
 I_memcpy
 I_memset
+I_strcmp
 sysclib_IMPORTS_end
 
 #ifdef ATA_USE_DEV9
