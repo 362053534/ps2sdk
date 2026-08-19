@@ -26,6 +26,7 @@ int sio2_event_flag;
 
 static int sd_detect_thread_id = -1;
 static volatile int sd_detect_thread_stop = 0;
+static int game_mode;
 static int sd_init_retries;
 static sio2_transfer_data_t global_td;
 static uint8_t sio2_current_baud = SIO2_BAUD_DIV_SLOW;
@@ -753,6 +754,10 @@ static void sd_detect_thread(void *arg)
                 int initialized = sdcard.initialized;
 
                 sd_detect();
+                // 游戏运行期间不再需要周期检测，初始化成功后结束检测线程。
+                if (game_mode && sdcard.initialized)
+                    break;
+
                 if (initialized && !sdcard.initialized) {
                     quickProbeDone = 0;
                     quickProbePassed = 0;
@@ -842,6 +847,7 @@ int module_start(int argc, char *argv[])
 
     bdm_set_probe_state(BDM_PROBE_TYPE_SDC, BDM_PROBE_STATE_PENDING);
     sd_init_retries = 0;
+    game_mode = argc > 1 && argv[1][0] == 'g';
 
 #ifndef MINI_DRIVER
     int i;
