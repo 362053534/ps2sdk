@@ -862,6 +862,21 @@ static int fs_devctl(iop_file_t *fd, const char *name, int cmd, void *arg, unsig
             ret = 0;
             break;
         }
+        case USBMASS_DEVCTL_RESET_PROBE: {
+            unsigned int *mask = (unsigned int *)arg;
+
+            if (!mask || arglen < sizeof(unsigned int)) {
+                ret = -EINVAL;
+                break;
+            }
+
+            for (unsigned int i = 0; i < BDM_PROBE_TYPE_COUNT; i++) {
+                if (*mask & (1 << i))
+                    bdm_set_probe_state(i, BDM_PROBE_STATE_PENDING);
+            }
+            ret = 0;
+            break;
+        }
         case USBMASS_DEVCTL_GET_MOUNT_INFO: {
             usbmass_mount_info_t *mountInfo = (usbmass_mount_info_t *)buf;
             unsigned int maxCount = buflen / sizeof(usbmass_mount_info_t);
