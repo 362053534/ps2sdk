@@ -775,6 +775,25 @@ static void sd_detect_thread(void *arg)
     ExitDeleteThread();
 }
 
+int mx4sio_quiesce_detection(void)
+{
+    iop_thread_info_t thread_info;
+    unsigned int waitCount = 0;
+
+    if (sd_detect_thread_id < 0)
+        return 0;
+
+    sd_detect_thread_stop = 1;
+    while (ReferThreadStatus(sd_detect_thread_id, &thread_info) >= 0) {
+        if (++waitCount >= 5000)
+            return -1;
+        DelayThread(1000);
+    }
+    sd_detect_thread_id = -1;
+
+    return 0;
+}
+
 
 /* Maximus32's C r3000 optimized byte reversal */
 /* 58-59uS avg on DECKARD */

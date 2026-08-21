@@ -832,5 +832,5 @@ void spisd_flush(struct block_device *bd)
 int spisd_stop(struct block_device *bd)
 {
     (void)bd;
-    return 0;
+    return mx4sio_quiesce_detection();
 }
