@@ -76,8 +76,6 @@ extern uint8_t mx_sio2_wait_equal(uint8_t value, uint32_t count);
 extern uint8_t mx_sio2_wait_not_equal(uint8_t value, uint32_t count);
 extern uint8_t mx_sio2_wait_equal_masked(uint8_t value, uint8_t mask, uint32_t count);
 
-extern int mx4sio_quiesce_detection(void);
-
 /* misc */
 extern void reverse_buffer(uint32_t *buffer, uint32_t count);
 

@@ -793,19 +793,6 @@ static int fs_devctl(iop_file_t *fd, const char *name, int cmd, void *arg, unsig
     (void)arg;
     (void)arglen;
 
-    if (cmd == USBMASS_DEVCTL_QUIESCE_MX4SIO) {
-        struct block_device *mounted_bd;
-
-        _fs_lock();
-        mounted_bd = fatfs_fs_driver_get_mounted_bd_from_index(fd->unit);
-        _fs_unlock();
-
-        if (!mounted_bd || !mounted_bd->stop)
-            return -ENXIO;
-
-        return mounted_bd->stop(mounted_bd);
-    }
-
     _fs_lock();
 
 

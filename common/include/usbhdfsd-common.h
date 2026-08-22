@@ -53,8 +53,6 @@ typedef struct bd_fragment {
 #define USBMASS_DEVCTL_SET_MX4SIO_PROBE 0x0005
 /** 重置指定BDM设备的错误探测状态。 */
 #define USBMASS_DEVCTL_RESET_PROBE 0x0006
-/** 停止MX4SIO检测线程，但保持设备挂载。 */
-#define USBMASS_DEVCTL_QUIESCE_MX4SIO 0x0007
 
 #define USBMASS_BD_TYPE_USB   0x01
 #define USBMASS_BD_TYPE_ILINK 0x02
