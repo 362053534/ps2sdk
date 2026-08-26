@@ -719,8 +719,8 @@ static void sd_detect_thread(void *arg)
         /* try to detect card removal if it hasn't been used recently */
         if (sdcard.used == 0 && bdm_get_probe_enabled(BDM_PROBE_TYPE_SDC)) {
             if (!sdcard.initialized && !quickProbeDone) {
-                // 前2秒每帧进行一次极简探测，兼顾上电较慢的TF卡。
-                for (int i = 0; i < 120 && !sd_detect_thread_stop && bdm_get_probe_enabled(BDM_PROBE_TYPE_SDC); i++) {
+                // 前5秒每帧进行一次极简探测，兼顾上电较慢的TF卡。
+                for (int i = 0; i < 300 && !sd_detect_thread_stop && bdm_get_probe_enabled(BDM_PROBE_TYPE_SDC); i++) {
                     int result;
 
                     mx_sio2_lock(INTR_NONE);
