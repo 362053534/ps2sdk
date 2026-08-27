@@ -17,6 +17,7 @@
 #include "module_debug.h"
 
 #define SD_INIT_MAX_RETRIES 10
+#define SD_PROBE_FLUSH_CHUNKS 64
 
 IRX_ID("mx4sio", 1, 2);
 
@@ -259,6 +260,28 @@ void mx_sio2_set_baud(uint8_t baud)
 
     mx_sio2_init_td(&global_td);
     mx_sio2_init_ports(&global_td);
+}
+
+static void mx_sio2_prepare_probe(void)
+{
+    uint32_t rx_data;
+    int state;
+
+    /* IGR不会给TF卡断电，先清掉上一次传输遗留的DMA和SIO2状态。 */
+    CpuSuspendIntr(&state);
+    dmac_ch_set_chcr(IOP_DMAC_SIO2in, 0);
+    dmac_ch_set_chcr(IOP_DMAC_SIO2out, 0);
+    CpuResumeIntr(state);
+
+    inl_sio2_ctrl_set(0x0bc);
+    inl_sio2_stat_set(inl_sio2_stat_get());
+    mx_sio2_set_baud(SIO2_BAUD_DIV_SLOW);
+
+    /* 有界排空卡端残留，避免异常卡状态阻塞后续存在性探测。 */
+    for (int i = 0; i < SD_PROBE_FLUSH_CHUNKS; i++) {
+        if (mx_sio2_rx_pio((uint8_t *)&rx_data, sizeof(rx_data)) != SPISD_RESULT_OK)
+            break;
+    }
 }
 
 uint8_t mx_sio2_write_byte(uint8_t byte)
@@ -719,6 +742,10 @@ static void sd_detect_thread(void *arg)
         /* try to detect card removal if it hasn't been used recently */
         if (sdcard.used == 0 && bdm_get_probe_enabled(BDM_PROBE_TYPE_SDC)) {
             if (!sdcard.initialized && !quickProbeDone) {
+                mx_sio2_lock(INTR_NONE);
+                mx_sio2_prepare_probe();
+                mx_sio2_unlock(INTR_NONE);
+
                 // 前2秒每帧进行一次极简探测，兼顾上电较慢的TF卡。
                 for (int i = 0; i < 120 && !sd_detect_thread_stop && bdm_get_probe_enabled(BDM_PROBE_TYPE_SDC); i++) {
                     int result;
@@ -884,14 +911,6 @@ int module_start(int argc, char *argv[])
     sceSetDMAPriority(IOP_DMAC_SIO2out, 3);
     sceEnableDMAChannel(IOP_DMAC_SIO2in);
     sceEnableDMAChannel(IOP_DMAC_SIO2out);
-
-    /* After a reboot the SD will always respond with:
-     * - 0xff 0xff 0xc1 0x3f
-     * - followed by an infinite amount of 0xff
-     */
-    mx_sio2_lock(INTR_NONE);
-    (void)mx_sio2_rx_pio((void *)&rv, 4);
-    mx_sio2_unlock(INTR_NONE);
 
     /* create SD card detection thread */
     thread.attr      = TH_C;
