@@ -601,11 +601,84 @@ static int fs_getstat(iop_file_t *fd, const char *name, iox_stat_t *stat)
     return ret;
 }
 
+static int get_next_valid_cluster(FIL *file, DWORD iClusterCurrent, DWORD *iClusterNext)
+{
+    DWORD iNext = get_fat(&file->obj, iClusterCurrent);
+
+    if (iNext == 0xffffffff)
+        return -EIO;
+    if (iNext < 2 || iNext >= file->obj.fs->n_fatent)
+        return 0;
+
+    *iClusterNext = iNext;
+    return 1;
+}
+
+static int check_cluster_chain_cycle(FIL *file, u64 iClusterCount)
+{
+    DWORD iSlowCluster = file->obj.sclust;
+    DWORD iFastCluster = file->obj.sclust;
+    DWORD iMeetingCluster = 0;
+    u64 iFastStepCount = 0;
+    u64 i;
+    int result;
+
+    for (i = 1; i < iClusterCount; i++) {
+        int j;
+
+        result = get_next_valid_cluster(file, iSlowCluster, &iSlowCluster);
+        if (result <= 0)
+            return -EIO;
+
+        for (j = 0; j < 2; j++) {
+            result = get_next_valid_cluster(file, iFastCluster, &iFastCluster);
+            iFastStepCount++;
+            if (result <= 0)
+                return iFastStepCount >= iClusterCount ? 0 : -EIO;
+        }
+
+        if (iSlowCluster == iFastCluster) {
+            iMeetingCluster = iSlowCluster;
+            break;
+        }
+    }
+
+    if (iMeetingCluster == 0)
+        return 0;
+
+    // 快慢指针可能在文件范围之外相遇，因此还要确认环是否侵入文件必需簇。
+    iSlowCluster = file->obj.sclust;
+    iFastCluster = iMeetingCluster;
+    u64 iCycleStart = 0;
+    while (iSlowCluster != iFastCluster) {
+        if (get_next_valid_cluster(file, iSlowCluster, &iSlowCluster) != 1 ||
+            get_next_valid_cluster(file, iFastCluster, &iFastCluster) != 1)
+            return -EIO;
+        iCycleStart++;
+        if (iCycleStart >= iClusterCount)
+            return 0;
+    }
+
+    u64 iCycleLength = 1;
+    if (get_next_valid_cluster(file, iSlowCluster, &iFastCluster) != 1)
+        return -EIO;
+    while (iSlowCluster != iFastCluster) {
+        if (iCycleLength >= iClusterCount - iCycleStart)
+            return 0;
+        if (get_next_valid_cluster(file, iFastCluster, &iFastCluster) != 1)
+            return -EIO;
+        iCycleLength++;
+    }
+
+    return iCycleLength < iClusterCount - iCycleStart ? -EIO : 0;
+}
+
 static int get_frag_list(FIL *file, void *rdata, unsigned int rdatalen)
 {
     bd_fragment_t *f = (bd_fragment_t*)rdata;
     int iMaxFragments = rdatalen / sizeof(bd_fragment_t);
     int iFragCount = 0;
+    u64 iClusterCount;
     u64 iClustersRemaining;
     u64 iBytesPerCluster;
 
@@ -622,9 +695,10 @@ static int get_frag_list(FIL *file, void *rdata, unsigned int rdatalen)
     iBytesPerCluster = (u64)file->obj.fs->csize * bd->sectorSize;
     if (iBytesPerCluster == 0)
         return -EIO;
-    iClustersRemaining = (u64)file->obj.objsize / iBytesPerCluster;
+    iClusterCount = (u64)file->obj.objsize / iBytesPerCluster;
     if ((u64)file->obj.objsize % iBytesPerCluster != 0)
-        iClustersRemaining++;
+        iClusterCount++;
+    iClustersRemaining = iClusterCount;
 
     DWORD iClusterStart = file->obj.sclust;
     DWORD iClusterCurrent = iClusterStart;
@@ -669,6 +743,10 @@ static int get_frag_list(FIL *file, void *rdata, unsigned int rdatalen)
         if (iClustersRemaining > 0)
             iClusterCurrent = iClusterNext;
     }
+
+    // 仅在容量不足时复核循环链，避免正常启动路径承担额外的 FAT 扫描开销。
+    if (iMaxFragments > 0 && iFragCount > iMaxFragments && check_cluster_chain_cycle(file, iClusterCount) < 0)
+        return -EIO;
 
     return iFragCount;
 }
