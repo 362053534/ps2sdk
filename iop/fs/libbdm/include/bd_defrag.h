@@ -28,8 +28,27 @@ typedef struct bd_defrag_cursor {
     u64 offset;
 } bd_defrag_cursor_t;
 
+typedef struct bd_defrag_checkpoint {
+    u64 logical_sector;
+    u32 fragment;
+} __attribute__((packed)) bd_defrag_checkpoint_t;
+
+typedef struct bd_defrag_index {
+    struct bd_fragment *fraglist;
+    u32 fragcount;
+    u32 stride;
+    u32 checkpoint_count;
+    bd_defrag_checkpoint_t *checkpoints;
+} bd_defrag_index_t;
+
 /* 游标由调用方持有；首次使用以及设备或碎片表变化后必须重置。 */
 extern void bd_defrag_cursor_reset(bd_defrag_cursor_t *cursor);
+extern int bd_defrag_index_build(bd_defrag_index_t *index, struct bd_fragment *fraglist, u32 fragcount,
+                                 u32 stride, bd_defrag_checkpoint_t *checkpoints, u32 checkpoint_capacity);
+extern void bd_defrag_index_reset(bd_defrag_index_t *index);
+extern int bd_defrag_read_cached_indexed(struct block_device *bd, u32 fragcount, struct bd_fragment *fraglist,
+                                         const bd_defrag_index_t *index, u64 sector, void *buffer, u16 count,
+                                         bd_defrag_cursor_t *cursor);
 extern int bd_defrag_read_cached(struct block_device *bd, u32 fragcount, struct bd_fragment *fraglist,
                                  u64 sector, void *buffer, u16 count, bd_defrag_cursor_t *cursor);
 extern int bd_defrag_read(struct block_device* bd, u32 fragcount, struct bd_fragment* fraglist, u64 sector, void* buffer, u16 count);
