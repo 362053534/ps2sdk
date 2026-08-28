@@ -167,6 +167,7 @@ extern uint16_t spisd_read_status_register();
 
 /* init */
 extern int spisd_probe_card(int initialize);
+extern void spisd_abort_pending_transfer(void);
 extern int spisd_init_card();   /* bring card up from identification mode to data-transfer mode */
 extern int spisd_get_card_info(); /* get card info and reattach to bdm if card capacity changed */
 extern int spisd_recover();

@@ -17,7 +17,7 @@
 #include "module_debug.h"
 
 #define SD_INIT_MAX_RETRIES 10
-#define SD_PROBE_FLUSH_CHUNKS 64
+#define SD_PROBE_FLUSH_CHUNKS 1024
 
 IRX_ID("mx4sio", 1, 2);
 
@@ -266,9 +266,12 @@ static void mx_sio2_prepare_probe(void)
 {
     uint32_t rx_data;
     int state;
+    int res;
 
     /* IGR不会给TF卡断电，先清掉上一次传输遗留的DMA和SIO2状态。 */
     CpuSuspendIntr(&state);
+    DisableIntr(IOP_IRQ_DMA_SIO2_IN, &res);
+    DisableIntr(IOP_IRQ_DMA_SIO2_OUT, &res);
     dmac_ch_set_chcr(IOP_DMAC_SIO2in, 0);
     dmac_ch_set_chcr(IOP_DMAC_SIO2out, 0);
     CpuResumeIntr(state);
@@ -276,6 +279,8 @@ static void mx_sio2_prepare_probe(void)
     inl_sio2_ctrl_set(0x0bc);
     inl_sio2_stat_set(inl_sio2_stat_get());
     mx_sio2_set_baud(SIO2_BAUD_DIV_SLOW);
+
+    spisd_abort_pending_transfer();
 
     /* 有界排空卡端残留，避免异常卡状态阻塞后续存在性探测。 */
     for (int i = 0; i < SD_PROBE_FLUSH_CHUNKS; i++) {

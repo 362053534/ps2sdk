@@ -163,6 +163,18 @@ int spisd_probe_card(int initialize)
     return (spisd_send_cmd(CMD0, 0) == SPISD_R1_IDLE_FLAG) ? SPISD_RESULT_OK : SPISD_RESULT_NO_CARD;
 }
 
+void spisd_abort_pending_transfer(void)
+{
+    /* 复位不会让TF卡掉电，需同时覆盖被中断的多块读取和多块写入。 */
+    (void)spisd_send_cmd(CMD12, 0);
+    (void)mx_sio2_write_byte(0xFD);
+
+    /* 写入可能仍在编程，等待必须有界，失败后仍交给后续排空和CMD0处理。 */
+    (void)mx_sio2_wait_equal(0xFF, READ_TOKEN_TIMEOUT);
+    (void)mx_sio2_write_byte(0xFD);
+    mx_sio2_write_dummy();
+}
+
 int spisd_init_card()
 {
     uint16_t timeout = WAIT_IDLE_TIMEOUT;
