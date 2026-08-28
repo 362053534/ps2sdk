@@ -65,7 +65,9 @@ IRX_ID(MODNAME, 2, 7);
 #define ATA_EV_TIMEOUT  1
 #define ATA_EV_COMPLETE 2
 #ifdef ATA_ENABLE_BDM
-#define ATA_INIT_MAX_RETRIES 3
+#define ATA_SYNC_INIT_MAX_RETRIES 6
+#define ATA_INIT_RETRY_TIMEOUT_US 5000000
+#define ATA_INIT_RETRY_POLL_US    50000
 #define ATA_BDM_ASYNC_ARG    "-bdm_async"
 #endif
 
@@ -86,6 +88,7 @@ static ata_devinfo_t atad_devinfo[2];
 #ifdef ATA_ENABLE_BDM
 static int ata_bdm_async_probe;
 static volatile int ata_bdm_probe_finished;
+static int ata_bdm_last_init_result;
 static ata_devinfo_t *ata_initialize_device(int device);
 
 static int ata_get_probe_status(void)
@@ -103,13 +106,24 @@ static int ata_get_probe_status(void)
 static void ata_bdm_probe_thread(void *arg)
 {
     ata_devinfo_t *devinfo = NULL;
+    iop_sys_clock_t current;
+    iop_sys_clock_t timeout;
+    u64 deadline;
     int probeAttempted = 0;
-    int retries;
     int status = -1;
+    int finalState;
 
     (void)arg;
 
-    for (retries = 0; retries < ATA_INIT_MAX_RETRIES; retries++) {
+    GetSystemTime(&current);
+    USec2SysClock(ATA_INIT_RETRY_TIMEOUT_US, &timeout);
+    deadline = (((u64)current.hi << 32) | current.lo) + (((u64)timeout.hi << 32) | timeout.lo);
+
+    while (1) {
+        GetSystemTime(&current);
+        if ((((u64)current.hi << 32) | current.lo) >= deadline)
+            break;
+
         status = ata_get_probe_status();
         if (status >= 0 && !(status & ATA_STAT_BUSY) && (status & ATA_STAT_READY)) {
             probeAttempted = 1;
@@ -118,17 +132,23 @@ static void ata_bdm_probe_thread(void *arg)
                 break;
         }
 
-        if (retries < ATA_INIT_MAX_RETRIES - 1)
-            DelayThread(1000000);
+        GetSystemTime(&current);
+        if ((((u64)current.hi << 32) | current.lo) >= deadline)
+            break;
+
+        DelayThread(ATA_INIT_RETRY_POLL_US);
     }
 
-    if (devinfo)
+    if (devinfo) {
         ata_initialize_device(1);
-    else if (status < 0)
-        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ABSENT);
-    else if (!probeAttempted)
-        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ERROR);
+        finalState = BDM_PROBE_STATE_PRESENT;
+    } else if (probeAttempted) {
+        finalState = ata_bdm_last_init_result == ATA_RES_ERR_NODEV ? BDM_PROBE_STATE_ABSENT : BDM_PROBE_STATE_ERROR;
+    } else {
+        finalState = status < 0 ? BDM_PROBE_STATE_ABSENT : BDM_PROBE_STATE_ERROR;
+    }
 
+    bdm_set_probe_state(BDM_PROBE_TYPE_ATA, finalState);
     __asm__ __volatile__("" : : : "memory");
     ata_bdm_probe_finished = 1;
     ExitDeleteThread();
@@ -468,13 +488,13 @@ int _start(int argc, char *argv[])
             goto out;
         }
     } else {
-        for (retries = 0; retries < ATA_INIT_MAX_RETRIES; retries++) {
+        for (retries = 0; retries < ATA_SYNC_INIT_MAX_RETRIES; retries++) {
             if (sceAtaInit(0))
                 break;
-            if (retries < ATA_INIT_MAX_RETRIES - 1)
+            if (retries < ATA_SYNC_INIT_MAX_RETRIES - 1)
                 DelayThread(1000000);
         }
-        if (retries < ATA_INIT_MAX_RETRIES)
+        if (retries < ATA_SYNC_INIT_MAX_RETRIES)
             sceAtaInit(1);
     }
 #endif
@@ -1449,7 +1469,7 @@ static int ata_init_devices(ata_devinfo_t *devinfo)
         M_PRINTF("Error: Unable to detect HDD 0.\n");
         devinfo[1].exists = 0;
 #ifdef ATA_ENABLE_BDM
-        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ABSENT);
+        if (!ata_bdm_async_probe) bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ABSENT);
 #endif
         return ATA_RES_ERR_NODEV; // Returns 0 in v1.04.
     }
@@ -1570,10 +1590,10 @@ static int ata_init_devices(ata_devinfo_t *devinfo)
     }
 #ifdef ATA_ENABLE_BDM
     if (!deviceRegistered) {
-        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ERROR);
+        if (!ata_bdm_async_probe) bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ERROR);
         return ATA_RES_ERR_IO;
     }
-    bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_PRESENT);
+    if (!ata_bdm_async_probe) bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_PRESENT);
 #endif
     return 0;
 }
@@ -1591,7 +1611,9 @@ static ata_devinfo_t *ata_initialize_device(int device)
         if ((res = ata_bus_reset()) || (res = ata_init_devices(atad_devinfo))) {
 #ifdef ATA_ENABLE_BDM
             ata_devinfo_init = 0;
-            bdm_set_probe_state(BDM_PROBE_TYPE_ATA, res == ATA_RES_ERR_NODEV ? BDM_PROBE_STATE_ABSENT : BDM_PROBE_STATE_ERROR);
+            ata_bdm_last_init_result = res;
+            if (!ata_bdm_async_probe)
+                bdm_set_probe_state(BDM_PROBE_TYPE_ATA, res == ATA_RES_ERR_NODEV ? BDM_PROBE_STATE_ABSENT : BDM_PROBE_STATE_ERROR);
 #endif
             return NULL;
         }
