@@ -66,7 +66,7 @@ IRX_ID(MODNAME, 2, 7);
 #define ATA_EV_COMPLETE 2
 #ifdef ATA_ENABLE_BDM
 #define ATA_SYNC_INIT_MAX_RETRIES 6
-#define ATA_INIT_RETRY_TIMEOUT_US 5000000
+#define ATA_BDM_ASYNC_RETRY_COUNT 100
 #define ATA_INIT_RETRY_POLL_US    50000
 #define ATA_BDM_ASYNC_ARG    "-bdm_async"
 #endif
@@ -106,24 +106,14 @@ static int ata_get_probe_status(void)
 static void ata_bdm_probe_thread(void *arg)
 {
     ata_devinfo_t *devinfo = NULL;
-    iop_sys_clock_t current;
-    iop_sys_clock_t timeout;
-    u64 deadline;
     int probeAttempted = 0;
+    int retryCount = 0;
     int status = -1;
     int finalState;
 
     (void)arg;
 
-    GetSystemTime(&current);
-    USec2SysClock(ATA_INIT_RETRY_TIMEOUT_US, &timeout);
-    deadline = (((u64)current.hi << 32) | current.lo) + (((u64)timeout.hi << 32) | timeout.lo);
-
-    while (1) {
-        GetSystemTime(&current);
-        if ((((u64)current.hi << 32) | current.lo) >= deadline)
-            break;
-
+    for (;;) {
         status = ata_get_probe_status();
         if (status >= 0 && !(status & ATA_STAT_BUSY) && (status & ATA_STAT_READY)) {
             probeAttempted = 1;
@@ -132,8 +122,7 @@ static void ata_bdm_probe_thread(void *arg)
                 break;
         }
 
-        GetSystemTime(&current);
-        if ((((u64)current.hi << 32) | current.lo) >= deadline)
+        if (retryCount++ >= ATA_BDM_ASYNC_RETRY_COUNT)
             break;
 
         DelayThread(ATA_INIT_RETRY_POLL_US);
