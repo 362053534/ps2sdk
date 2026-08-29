@@ -66,7 +66,8 @@ IRX_ID(MODNAME, 2, 7);
 #define ATA_EV_COMPLETE 2
 #ifdef ATA_ENABLE_BDM
 #define ATA_SYNC_INIT_MAX_RETRIES 6
-#define ATA_BDM_ASYNC_RETRY_COUNT 2000
+#define ATA_BDM_ASYNC_RETRY_COUNT 200
+#define ATA_BDM_INVALID_STATUS_RETRIES 20
 #define ATA_INIT_RETRY_POLL_US    50000
 #define ATA_BDM_ASYNC_ARG    "-bdm_async"
 #endif
@@ -108,6 +109,7 @@ static void ata_bdm_probe_thread(void *arg)
     ata_devinfo_t *devinfo = NULL;
     int probeAttempted = 0;
     int retryCount = 0;
+    int invalidStatusRetries = 0;
     int status = -1;
     int finalState;
 
@@ -115,7 +117,15 @@ static void ata_bdm_probe_thread(void *arg)
 
     for (;;) {
         status = ata_get_probe_status();
-        if (status >= 0 && !(status & ATA_STAT_BUSY) && (status & ATA_STAT_READY)) {
+        if (status < 0) {
+            /* 设备刚上电时状态寄存器可能短暂无效，给硬件一秒恢复时间。 */
+            if (++invalidStatusRetries > ATA_BDM_INVALID_STATUS_RETRIES)
+                break;
+            DelayThread(ATA_INIT_RETRY_POLL_US);
+            continue;
+        }
+        invalidStatusRetries = 0;
+        if (!(status & ATA_STAT_BUSY) && (status & ATA_STAT_READY)) {
             probeAttempted = 1;
             devinfo = ata_initialize_device(0);
             if (devinfo)
