@@ -22,6 +22,19 @@ typedef struct bd_fragment {
     u32 count;  /// number of sector in this fragment
 } __attribute__((packed)) bd_fragment_t;
 
+typedef struct bd_fraglist_cursor {
+    u64 clusters_remaining;
+    u32 next_cluster;
+    u32 reserved;
+} __attribute__((packed)) bd_fraglist_cursor_t;
+
+typedef struct bd_fraglist_page {
+    bd_fraglist_cursor_t cursor;
+    u32 fragment_count;
+    u32 reserved;
+    bd_fragment_t fragments[0];
+} __attribute__((packed)) bd_fraglist_page_t;
+
 // IOCTL function codes
 /** Rename opened file. Data input to ioctl() -> new, full filename of file. */
 #define USBMASS_IOCTL_RENAME         0x0000
@@ -37,6 +50,8 @@ typedef struct bd_fragment {
 #define USBMASS_IOCTL_GET_FRAGLIST   0x0005
 /** Get the device number for the block device backing the mass partition */
 #define USBMASS_IOCTL_GET_DEVICE_NUMBER     0x0006
+/** 分页返回碎片表，避免fileXio控制缓冲区截断大表。 */
+#define USBMASS_IOCTL_GET_FRAGLIST_PAGE     0x0007
 
 // DEVCTL function codes
 /** Issues the SCSI STOP UNIT command to the specified device. Use this to shut down devices properly. */

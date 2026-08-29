@@ -673,24 +673,28 @@ static int check_cluster_chain_cycle(FIL *file, u64 iClusterCount)
     return iCycleLength < iClusterCount - iCycleStart ? -EIO : 0;
 }
 
-static int get_frag_list(FIL *file, void *rdata, unsigned int rdatalen)
+static int get_frag_list_internal(FIL *file, bd_fragment_t *f, int iMaxFragments, bd_fraglist_cursor_t *cursor)
 {
-    bd_fragment_t *f = (bd_fragment_t*)rdata;
-    int iMaxFragments = rdatalen / sizeof(bd_fragment_t);
     int iFragCount = 0;
+    int paged = cursor != NULL;
     u64 iClusterCount;
     u64 iClustersRemaining;
     u64 iBytesPerCluster;
+    DWORD iClusterStart;
+    DWORD iClusterCurrent;
 
     // Get the block device backing the file so we can get the starting LBA of the file system.
     struct block_device* bd = fatfs_fs_driver_get_mounted_bd_from_index(file->obj.fs->pdrv);
 
     if (bd == NULL)
         return -ENXIO;
-    if (iMaxFragments > 0 && rdata == NULL)
+    if (iMaxFragments > 0 && f == NULL)
         return -EINVAL;
-    if (file->obj.objsize == 0)
+    if (file->obj.objsize == 0) {
+        if (paged)
+            memset(cursor, 0, sizeof(*cursor));
         return 0;
+    }
 
     iBytesPerCluster = (u64)file->obj.fs->csize * bd->sectorSize;
     if (iBytesPerCluster == 0)
@@ -698,10 +702,26 @@ static int get_frag_list(FIL *file, void *rdata, unsigned int rdatalen)
     iClusterCount = (u64)file->obj.objsize / iBytesPerCluster;
     if ((u64)file->obj.objsize % iBytesPerCluster != 0)
         iClusterCount++;
-    iClustersRemaining = iClusterCount;
 
-    DWORD iClusterStart = file->obj.sclust;
-    DWORD iClusterCurrent = iClusterStart;
+    if (paged) {
+        if (cursor->clusters_remaining == 0 && cursor->next_cluster == 0) {
+            // 分页只用于大表，首次取页时复核循环链可保留原有的元数据保护。
+            if (check_cluster_chain_cycle(file, iClusterCount) < 0)
+                return -EIO;
+            iClustersRemaining = iClusterCount;
+            iClusterCurrent = file->obj.sclust;
+        } else {
+            if (cursor->clusters_remaining == 0 || cursor->next_cluster == 0 ||
+                cursor->clusters_remaining > iClusterCount)
+                return -EINVAL;
+            iClustersRemaining = cursor->clusters_remaining;
+            iClusterCurrent = cursor->next_cluster;
+        }
+    } else {
+        iClustersRemaining = iClusterCount;
+        iClusterCurrent = file->obj.sclust;
+    }
+    iClusterStart = iClusterCurrent;
 
     while (iClustersRemaining > 0) {
         u64 iFragmentSectorCount;
@@ -737,18 +757,58 @@ static int get_frag_list(FIL *file, void *rdata, unsigned int rdatalen)
                 M_DEBUG(" - sectors: 0x%08x%08x count %u\n", sector_u32[1], sector_u32[0], f[iFragCount].count);
             }
             iFragCount++;
-            if (iClustersRemaining > 0)
+            if (iClustersRemaining > 0) {
                 iClusterStart = iClusterNext;
-        }
-        if (iClustersRemaining > 0)
+                iClusterCurrent = iClusterNext;
+            }
+            if (paged && iFragCount >= iMaxFragments)
+                break;
+        } else {
             iClusterCurrent = iClusterNext;
+        }
     }
 
-    // 仅在容量不足时复核循环链，避免正常启动路径承担额外的 FAT 扫描开销。
-    if (iMaxFragments > 0 && iFragCount > iMaxFragments && check_cluster_chain_cycle(file, iClusterCount) < 0)
+    if (paged) {
+        cursor->clusters_remaining = iClustersRemaining;
+        cursor->next_cluster = iClustersRemaining > 0 ? iClusterCurrent : 0;
+        cursor->reserved = 0;
+    } else if (iMaxFragments > 0 && iFragCount > iMaxFragments &&
+               check_cluster_chain_cycle(file, iClusterCount) < 0) {
+        // 旧接口容量不足时仍需区分真实碎片与循环链异常。
         return -EIO;
+    }
 
     return iFragCount;
+}
+
+static int get_frag_list(FIL *file, void *rdata, unsigned int rdatalen)
+{
+    int iMaxFragments = rdatalen / sizeof(bd_fragment_t);
+
+    return get_frag_list_internal(file, (bd_fragment_t *)rdata, iMaxFragments, NULL);
+}
+
+static int get_frag_list_page(FIL *file, const void *data, unsigned int datalen, void *rdata, unsigned int rdatalen)
+{
+    bd_fraglist_cursor_t cursor;
+    bd_fraglist_page_t *page = (bd_fraglist_page_t *)rdata;
+    int iMaxFragments;
+    int result;
+
+    if (data == NULL || datalen < sizeof(cursor) || rdata == NULL ||
+        rdatalen < sizeof(*page) + sizeof(bd_fragment_t))
+        return -EINVAL;
+
+    iMaxFragments = (rdatalen - sizeof(*page)) / sizeof(bd_fragment_t);
+    memcpy(&cursor, data, sizeof(cursor));
+    result = get_frag_list_internal(file, page->fragments, iMaxFragments, &cursor);
+    if (result >= 0) {
+        page->cursor = cursor;
+        page->fragment_count = result;
+        page->reserved = 0;
+    }
+
+    return result;
 }
 
 //---------------------------------------------------------------------------
@@ -805,6 +865,9 @@ int fs_ioctl2(iop_file_t *fd, int cmd, void *data, unsigned int datalen, void *r
             break;
         case USBMASS_IOCTL_GET_FRAGLIST:
             ret = get_frag_list(file, rdata, rdatalen);
+            break;
+        case USBMASS_IOCTL_GET_FRAGLIST_PAGE:
+            ret = get_frag_list_page(file, data, datalen, rdata, rdatalen);
             break;
         case USBMASS_IOCTL_GET_DEVICE_NUMBER:
         {
