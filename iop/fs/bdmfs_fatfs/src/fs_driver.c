@@ -601,78 +601,6 @@ static int fs_getstat(iop_file_t *fd, const char *name, iox_stat_t *stat)
     return ret;
 }
 
-static int get_next_valid_cluster(FIL *file, DWORD iClusterCurrent, DWORD *iClusterNext)
-{
-    DWORD iNext = get_fat(&file->obj, iClusterCurrent);
-
-    if (iNext == 0xffffffff)
-        return -EIO;
-    if (iNext < 2 || iNext >= file->obj.fs->n_fatent)
-        return 0;
-
-    *iClusterNext = iNext;
-    return 1;
-}
-
-static int check_cluster_chain_cycle(FIL *file, u64 iClusterCount)
-{
-    DWORD iSlowCluster = file->obj.sclust;
-    DWORD iFastCluster = file->obj.sclust;
-    DWORD iMeetingCluster = 0;
-    u64 iFastStepCount = 0;
-    u64 i;
-    int result;
-
-    for (i = 1; i < iClusterCount; i++) {
-        int j;
-
-        result = get_next_valid_cluster(file, iSlowCluster, &iSlowCluster);
-        if (result <= 0)
-            return -EIO;
-
-        for (j = 0; j < 2; j++) {
-            result = get_next_valid_cluster(file, iFastCluster, &iFastCluster);
-            iFastStepCount++;
-            if (result <= 0)
-                return iFastStepCount >= iClusterCount ? 0 : -EIO;
-        }
-
-        if (iSlowCluster == iFastCluster) {
-            iMeetingCluster = iSlowCluster;
-            break;
-        }
-    }
-
-    if (iMeetingCluster == 0)
-        return 0;
-
-    // 快慢指针可能在文件范围之外相遇，因此还要确认环是否侵入文件必需簇。
-    iSlowCluster = file->obj.sclust;
-    iFastCluster = iMeetingCluster;
-    u64 iCycleStart = 0;
-    while (iSlowCluster != iFastCluster) {
-        if (get_next_valid_cluster(file, iSlowCluster, &iSlowCluster) != 1 ||
-            get_next_valid_cluster(file, iFastCluster, &iFastCluster) != 1)
-            return -EIO;
-        iCycleStart++;
-        if (iCycleStart >= iClusterCount)
-            return 0;
-    }
-
-    u64 iCycleLength = 1;
-    if (get_next_valid_cluster(file, iSlowCluster, &iFastCluster) != 1)
-        return -EIO;
-    while (iSlowCluster != iFastCluster) {
-        if (iCycleLength >= iClusterCount - iCycleStart)
-            return 0;
-        if (get_next_valid_cluster(file, iFastCluster, &iFastCluster) != 1)
-            return -EIO;
-        iCycleLength++;
-    }
-
-    return iCycleLength < iClusterCount - iCycleStart ? -EIO : 0;
-}
-
 static int get_frag_list_internal(FIL *file, bd_fragment_t *f, int iMaxFragments, bd_fraglist_cursor_t *cursor)
 {
     int iFragCount = 0;
@@ -705,9 +633,6 @@ static int get_frag_list_internal(FIL *file, bd_fragment_t *f, int iMaxFragments
 
     if (paged) {
         if (cursor->clusters_remaining == 0 && cursor->next_cluster == 0) {
-            // 分页只用于大表，首次取页时复核循环链可保留原有的元数据保护。
-            if (check_cluster_chain_cycle(file, iClusterCount) < 0)
-                return -EIO;
             iClustersRemaining = iClusterCount;
             iClusterCurrent = file->obj.sclust;
         } else {
@@ -772,10 +697,6 @@ static int get_frag_list_internal(FIL *file, bd_fragment_t *f, int iMaxFragments
         cursor->clusters_remaining = iClustersRemaining;
         cursor->next_cluster = iClustersRemaining > 0 ? iClusterCurrent : 0;
         cursor->reserved = 0;
-    } else if (iMaxFragments > 0 && iFragCount > iMaxFragments &&
-               check_cluster_chain_cycle(file, iClusterCount) < 0) {
-        // 旧接口容量不足时仍需区分真实碎片与循环链异常。
-        return -EIO;
     }
 
     return iFragCount;
