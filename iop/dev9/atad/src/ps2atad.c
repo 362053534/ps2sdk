@@ -66,9 +66,10 @@ IRX_ID(MODNAME, 2, 7);
 #define ATA_EV_COMPLETE 2
 #ifdef ATA_ENABLE_BDM
 #define ATA_SYNC_INIT_MAX_RETRIES 6
-#define ATA_BDM_ASYNC_RETRY_COUNT 600
-#define ATA_BDM_INVALID_STATUS_RETRIES 20
-#define ATA_INIT_RETRY_POLL_US    50000
+#define ATA_BDM_ASYNC_POLL_COUNT 60
+#define ATA_BDM_FORCE_INIT_INTERVAL 10
+#define ATA_BDM_INVALID_STATUS_RETRIES 2
+#define ATA_BDM_POLL_INTERVAL_US 1000000
 #define ATA_BDM_ASYNC_ARG    "-bdm_async"
 #endif
 
@@ -106,45 +107,49 @@ static int ata_get_probe_status(void)
 
 static void ata_bdm_probe_thread(void *arg)
 {
-    ata_devinfo_t *devinfo = NULL;
-    int probeAttempted = 0;
-    int retryCount = 0;
+    ata_devinfo_t *devinfo;
+    int pollCount;
     int invalidStatusRetries = 0;
-    int status = -1;
+    int wasReady = 0;
     int finalState;
 
     (void)arg;
 
-    for (;;) {
+    // 部分硬盘必须先执行ATA总线复位才会进入READY，因此首次不等待状态位。
+    devinfo = ata_initialize_device(0);
+
+    for (pollCount = 1; !devinfo && pollCount <= ATA_BDM_ASYNC_POLL_COUNT; pollCount++) {
+        int ready;
+        int status;
+
+        DelayThread(ATA_BDM_POLL_INTERVAL_US);
         status = ata_get_probe_status();
         if (status < 0) {
-            /* 设备刚上电时状态寄存器可能短暂无效，给硬件一秒恢复时间。 */
-            if (++invalidStatusRetries > ATA_BDM_INVALID_STATUS_RETRIES)
+            wasReady = 0;
+            if (++invalidStatusRetries >= ATA_BDM_INVALID_STATUS_RETRIES)
                 break;
-            DelayThread(ATA_INIT_RETRY_POLL_US);
             continue;
         }
+
         invalidStatusRetries = 0;
-        if (!(status & ATA_STAT_BUSY) && (status & ATA_STAT_READY)) {
-            probeAttempted = 1;
+        ready = !(status & ATA_STAT_BUSY) && (status & ATA_STAT_READY);
+
+        // 状态变为就绪时立即重试；状态不可靠的转接器每十秒兜底重试一次。
+        if ((ready && !wasReady) || pollCount % ATA_BDM_FORCE_INIT_INTERVAL == 0) {
             devinfo = ata_initialize_device(0);
             if (devinfo)
                 break;
         }
-
-        if (retryCount++ >= ATA_BDM_ASYNC_RETRY_COUNT)
-            break;
-
-        DelayThread(ATA_INIT_RETRY_POLL_US);
+        wasReady = ready;
     }
 
     if (devinfo) {
         ata_initialize_device(1);
         finalState = BDM_PROBE_STATE_PRESENT;
-    } else if (probeAttempted) {
-        finalState = ata_bdm_last_init_result == ATA_RES_ERR_NODEV ? BDM_PROBE_STATE_ABSENT : BDM_PROBE_STATE_ERROR;
+    } else if (invalidStatusRetries >= ATA_BDM_INVALID_STATUS_RETRIES || ata_bdm_last_init_result == ATA_RES_ERR_NODEV) {
+        finalState = BDM_PROBE_STATE_ABSENT;
     } else {
-        finalState = status < 0 ? BDM_PROBE_STATE_ABSENT : BDM_PROBE_STATE_ERROR;
+        finalState = BDM_PROBE_STATE_ERROR;
     }
 
     bdm_set_probe_state(BDM_PROBE_TYPE_ATA, finalState);
