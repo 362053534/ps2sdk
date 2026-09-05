@@ -1450,6 +1450,28 @@ static void ata_device_probe(ata_devinfo_t *devinfo)
         devinfo->exists = 0;
 }
 
+#ifdef ATA_ENABLE_BDM
+/* APA 分区头 magic 在 LBA0 偏移 4，值为 'APA\0'。FAT/exFAT 挂不上这种盘。 */
+#define ATA_APA_MAGIC0 'A'
+#define ATA_APA_MAGIC1 'P'
+#define ATA_APA_MAGIC2 'A'
+#define ATA_APA_MAGIC3 '\0'
+
+static int ata_bd_device_is_apa(int device)
+{
+    u8 *sector = (u8 *)ata_param;
+
+    /* 复用 IDENTIFY 缓冲，避免再占 512 字节 IOP 内存。 */
+    if (sceAtaDmaTransfer(device, sector, 0, 1, ATA_DIR_READ) != 0)
+        return 0;
+
+    return sector[4] == ATA_APA_MAGIC0 &&
+           sector[5] == ATA_APA_MAGIC1 &&
+           sector[6] == ATA_APA_MAGIC2 &&
+           sector[7] == ATA_APA_MAGIC3;
+}
+#endif
+
 static int ata_init_devices(ata_devinfo_t *devinfo)
 {
 #ifdef ATA_USE_DEV9
@@ -1462,6 +1484,7 @@ static int ata_init_devices(ata_devinfo_t *devinfo)
     u32 total_sectors_nonlba48, total_sectors_lba48;
 #ifdef ATA_ENABLE_BDM
     int deviceRegistered = 0;
+    int hddReady = 0;
     u64 total_sectors_lba48_bdm;
 #endif
 
@@ -1587,17 +1610,29 @@ static int ata_init_devices(ata_devinfo_t *devinfo)
 #endif
 
 #ifdef ATA_ENABLE_BDM
+        if (!devinfo[i].exists)
+            continue;
+
+        hddReady = 1;
         g_ata_bd[i].sectorCount = devinfo[i].lba48 ? total_sectors_lba48_bdm : total_sectors_nonlba48;
-        bdm_connect_bd(&g_ata_bd[i]);
-        deviceRegistered = 1;
+        /* APA 盘留给 ps2hdd，不进 BDM，避免 GET_BD_LIST 里出现永远挂不上的 ata。 */
+        if (ata_bd_device_is_apa(i)) {
+            M_PRINTF("APA disk on device %d, skip BDM connect.\n", i);
+        } else {
+            bdm_connect_bd(&g_ata_bd[i]);
+            deviceRegistered = 1;
+        }
 #endif
     }
 #ifdef ATA_ENABLE_BDM
-    if (!deviceRegistered) {
-        if (!ata_bdm_async_probe) bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ERROR);
-        return ATA_RES_ERR_IO;
+    if (deviceRegistered || hddReady) {
+        if (!ata_bdm_async_probe)
+            bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_PRESENT);
+        return 0;
     }
-    if (!ata_bdm_async_probe) bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_PRESENT);
+    if (!ata_bdm_async_probe)
+        bdm_set_probe_state(BDM_PROBE_TYPE_ATA, BDM_PROBE_STATE_ERROR);
+    return ATA_RES_ERR_IO;
 #endif
     return 0;
 }
