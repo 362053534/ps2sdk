@@ -68,7 +68,7 @@ IRX_ID(MODNAME, 2, 7);
 #define ATA_SYNC_INIT_MAX_RETRIES 6
 #define ATA_BDM_ASYNC_POLL_COUNT 60
 #define ATA_BDM_FORCE_INIT_INTERVAL 10
-#define ATA_BDM_INVALID_STATUS_RETRIES 2
+#define ATA_BDM_INVALID_STATUS_RETRIES 10 /* 连续无效状态约 10 秒才当没盘，给 16TB 慢上电留窗口。 */
 #define ATA_BDM_POLL_INTERVAL_US 1000000
 #define ATA_BDM_ASYNC_ARG    "-bdm_async"
 #endif
@@ -1461,8 +1461,13 @@ static int ata_bd_device_is_apa(int device)
 {
     u8 *sector = (u8 *)ata_param;
 
-    /* 复用 IDENTIFY 缓冲，避免再占 512 字节 IOP 内存。 */
+    /* 复用 IDENTIFY 缓冲，避免再占 512 字节 IOP 内存。先清零，防止 DMA 未写时旧数据冒充 APA。 */
+    memset(sector, 0, 512);
     if (sceAtaDmaTransfer(device, sector, 0, 1, ATA_DIR_READ) != 0)
+        return 0;
+
+    /* 有 55AA 的是 MBR/GPT，即便引导区碰巧出现 APA 也不 skip。真 APA 碰巧带 55AA 时交给 EE 拦。 */
+    if (sector[0x1FE] == 0x55 && sector[0x1FF] == 0xAA)
         return 0;
 
     return sector[4] == ATA_APA_MAGIC0 &&
