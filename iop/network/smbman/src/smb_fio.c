@@ -373,24 +373,26 @@ int smb_close(iop_file_t *f)
     FHANDLE *fh = (FHANDLE *)f->privdata;
     int r       = 0;
 
-    if ((UID == -1) || (TID == -1) || (fh->smb_fid == -1))
+    if (fh == NULL)
         return -EBADF;
 
     smb_io_lock();
 
-    if (fh) {
-        if (fh->mode != O_DIROPEN) {
-            r = smb_Close(UID, TID, fh->smb_fid);
-            if (r != 0) {
-                goto io_unlock;
-            }
-        }
-        memset(fh, 0, sizeof(FHANDLE));
-        fh->smb_fid = -1;
-        r           = 0;
-    }
+    // Only send the remote Close request when we actually have a live session
+    // and a real (non-directory) server file id. Directory handles that were
+    // opened but never read still have smb_fid == -1 and must not be sent.
+    if (fh->mode != O_DIROPEN && fh->smb_fid != -1 && UID != -1 && TID != -1)
+        r = smb_Close(UID, TID, fh->smb_fid);
 
-io_unlock:
+    // Always reclaim the local file handle slot, regardless of whether the
+    // remote Close succeeded or the session was dropped. Bailing out on error
+    // (or on a temporarily disconnected session) used to leak the slot forever,
+    // so a flaky network or a plain "opendir + closedir without readdir" would
+    // slowly exhaust all MAX_FDHANDLES entries and every later open()/opendir()
+    // would then fail with -EMFILE.
+    memset(fh, 0, sizeof(FHANDLE));
+    fh->smb_fid = -1;
+
     smb_io_unlock();
 
     return r;
