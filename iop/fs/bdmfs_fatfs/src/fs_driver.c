@@ -317,7 +317,17 @@ static int fs_close(iop_file_t *fd)
     _fs_lock();
 
     if (fd->privdata) {
-        ret = f_close(fd->privdata);
+        FIL *fil = (FIL *)fd->privdata;
+
+        ret = f_close(fil);
+
+        // Always release the local slot, even if f_close() failed. FatFs only
+        // clears obj.fs (which is how fs_find_free_fil_structure() detects a
+        // free slot) when both f_sync() and validate() succeed. On a flaky or
+        // removed block device (USB/MX4SIO/SD glitch) the flush/validate fails,
+        // obj.fs stays set, and the slot would leak forever, slowly exhausting
+        // MAX_FILES until every open() returns -EMFILE. Force-reclaim it here.
+        fil->obj.fs  = NULL;
         fd->privdata = NULL;
     }
 
@@ -478,7 +488,16 @@ static int fs_dclose(iop_file_t *fd)
     _fs_lock();
 
     if (fd->privdata) {
-        ret = f_closedir(fd->privdata);
+        DIR *dir = (DIR *)fd->privdata;
+
+        ret = f_closedir(dir);
+
+        // Always release the local slot, even if f_closedir() failed. FatFs only
+        // clears obj.fs (used by fs_find_free_dir_structure() to detect a free
+        // slot) when validate() succeeds; a disconnected/re-enumerated device
+        // makes it fail and the slot would leak forever. With only MAX_DIRS (16)
+        // directory slots this exhausts quickly into -EMFILE. Force-reclaim it.
+        dir->obj.fs  = NULL;
         fd->privdata = NULL;
     }
 
