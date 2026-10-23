@@ -246,6 +246,122 @@ static FIL *fs_find_free_fil_structure(void)
     return NULL;
 }
 
+#if FF_USE_FASTSEEK
+// 快速定位(Fast seek)簇链映射表(CLMT)池：仅供只读打开的 OPL 图包 zip 使用，IOP 内存紧张，故采用固定小池而非每个槽位一张
+#define FASTSEEK_TBL_COUNT  1                                          // 图包最终只从一个设备读取，一张表即可；并发打开时其余文件静默退回普通定位
+#define FASTSEEK_MAX_FRAGS  511                                        // 每个文件可映射的最大碎片数(单张表约 4KB)
+#define FASTSEEK_TBL_DWORDS (FASTSEEK_HDR_DWORDS + FASTSEEK_MAX_FRAGS * FASTSEEK_FRAG_DWORDS + FASTSEEK_TERM_DWORDS)
+#define FASTSEEK_HDR_DWORDS  1                                         // 表头：表大小(DWORD 数)
+#define FASTSEEK_FRAG_DWORDS 2                                         // 每个碎片：簇数 + 起始簇号
+#define FASTSEEK_TERM_DWORDS 1                                         // 结束标记 0
+static DWORD fastseek_tables[FASTSEEK_TBL_COUNT][FASTSEEK_TBL_DWORDS];
+static FIL *fastseek_owner[FASTSEEK_TBL_COUNT];                        // 每张表的占用者，NULL 表示空闲
+
+// 图包路径匹配规则：必须与 OPL src/artpack.c 的图包命名保持同步
+// (ART_PACK_DIR_NAME / ART_PACK_NAME_KEY / ART_PACK_ZIP_EXT)，OPL 改名时这里也要改
+#define FASTSEEK_ART_DIR_NAME "ART2"     // 图包所在目录名(须是文件的直接父目录)
+#define FASTSEEK_ART_NAME_KEY "OPLM_ART" // 图包文件名须包含的关键字
+#define FASTSEEK_ART_ZIP_EXT  ".zip"     // 图包扩展名
+#define FASTSEEK_PATH_SEP     '/'        // 路径分隔符
+
+// ASCII 小写转换(IOP sysclib 未导入 strcasecmp/tolower，本地实现)
+static char fs_fastseek_lower(char c)
+{
+    return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+}
+
+// 不区分大小写比较 a 的前 n 个字符与 b 的前 n 个字符，相等返回 1
+static int fs_fastseek_ieq(const char *a, const char *b, int n)
+{
+    int i;
+
+    for (i = 0; i < n; i++) {
+        if (fs_fastseek_lower(a[i]) != fs_fastseek_lower(b[i])) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+// 判断路径是否为 OPL 图包：.../ART2/<含 OPLM_ART 的主名>.zip，均不区分大小写
+static int fs_fastseek_is_art_pack(const char *name)
+{
+    const char *base, *dir;
+    int baseLen, dirLen, keyLen, extLen, i;
+
+    base = strrchr(name, FASTSEEK_PATH_SEP);
+    if (base == NULL) {
+        return 0; // 根目录下的文件，不可能位于 ART2
+    }
+    // 定位父目录名的起点
+    dir = base;
+    while (dir > name && dir[-1] != FASTSEEK_PATH_SEP) {
+        dir--;
+    }
+    dirLen = (int)(base - dir);
+    base++;
+    baseLen = (int)strlen(base);
+    keyLen  = (int)strlen(FASTSEEK_ART_NAME_KEY);
+    extLen  = (int)strlen(FASTSEEK_ART_ZIP_EXT);
+
+    if (dirLen != (int)strlen(FASTSEEK_ART_DIR_NAME) || !fs_fastseek_ieq(dir, FASTSEEK_ART_DIR_NAME, dirLen)) {
+        return 0;
+    }
+    if (baseLen < extLen + keyLen || !fs_fastseek_ieq(base + baseLen - extLen, FASTSEEK_ART_ZIP_EXT, extLen)) {
+        return 0;
+    }
+    // 关键字须出现在主名(去掉扩展名)中
+    for (i = 0; i + keyLen <= baseLen - extLen; i++) {
+        if (fs_fastseek_ieq(base + i, FASTSEEK_ART_NAME_KEY, keyLen)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// 释放文件占用的映射表并关闭其快速定位模式
+static void fs_fastseek_release(FIL *fil)
+{
+    int i;
+
+    for (i = 0; i < FASTSEEK_TBL_COUNT; i++) {
+        if (fastseek_owner[i] == fil) {
+            fastseek_owner[i] = NULL;
+        }
+    }
+    fil->cltbl = NULL;
+}
+
+// 为只读打开的图包建立簇链映射表；失败(碎片过多/池满/出错)时静默退回普通定位，不影响 open
+static void fs_fastseek_setup(FIL *fil)
+{
+    int i;
+    FRESULT res;
+
+    fil->cltbl = NULL;
+    for (i = 0; i < FASTSEEK_TBL_COUNT; i++) {
+        // 占用者已失效(例如卸载后未 close，obj.fs 被清空)或是本槽位的残留记录，视为空闲回收
+        if (fastseek_owner[i] == NULL || fastseek_owner[i] == fil || fastseek_owner[i]->obj.fs == NULL) {
+            break;
+        }
+    }
+    if (i >= FASTSEEK_TBL_COUNT) {
+        return; // 池已满，使用普通定位
+    }
+
+    fastseek_tables[i][0] = FASTSEEK_TBL_DWORDS; // 首元素为表大小(DWORD 数)
+    fastseek_owner[i]     = fil;
+    fil->cltbl            = fastseek_tables[i];
+
+    // 遍历整条簇链一次(exFAT 连续文件 get_fat 为算术计算，开销很小且只占 1 个碎片)
+    res = f_lseek(fil, CREATE_LINKMAP);
+    if (res != FR_OK) {
+        M_DEBUG("%s: CREATE_LINKMAP failed (%d), fast seek disabled\n", __func__, res);
+        fs_fastseek_release(fil);
+    }
+}
+#endif
+
 static DIR *fs_find_free_dir_structure(void)
 {
     int i;
@@ -300,6 +416,12 @@ static int fs_open(iop_file_t *fd, const char *name, int flags, int mode)
         fd->privdata = NULL;
         ret          = -ret;
     } else {
+#if FF_USE_FASTSEEK
+        // 快速定位模式下 FatFs 禁止扩展文件，因此只对纯只读打开的 OPL 图包 zip 启用
+        if ((f_mode & (FA_WRITE | FA_OPEN_ALWAYS | FA_CREATE_ALWAYS | FA_OPEN_APPEND)) == 0 && fs_fastseek_is_art_pack(name)) {
+            fs_fastseek_setup((FIL *)fd->privdata);
+        }
+#endif
         ret = 1;
     }
 
@@ -328,6 +450,9 @@ static int fs_close(iop_file_t *fd)
         // obj.fs stays set, and the slot would leak forever, slowly exhausting
         // MAX_FILES until every open() returns -EMFILE. Force-reclaim it here.
         fil->obj.fs  = NULL;
+#if FF_USE_FASTSEEK
+        fs_fastseek_release(fil); // 无论 f_close 成败都归还映射表，防止泄漏
+#endif
         fd->privdata = NULL;
     }
 
