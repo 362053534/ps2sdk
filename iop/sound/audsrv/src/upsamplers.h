@@ -15,7 +15,16 @@
 #ifndef __UPSAMPLERS_INCLUDED__
 #define __UPSAMPLERS_INCLUDED__
 
-/** 三次插值需要的历史采样数(上一块末尾的几个采样，保证块与块之间连续) */
+/** 插值方式开关(编译时选择)：UP_INTERP_LINEAR 为线性插值(IOP开销小)，UP_INTERP_CUBIC 为三次插值(音质更好，开销约为线性的两倍)。
+ *  可在编译参数里用 -DUP_INTERP_MODE=1 覆盖，默认使用线性插值。
+ */
+#define UP_INTERP_LINEAR 0
+#define UP_INTERP_CUBIC  1
+#ifndef UP_INTERP_MODE
+#define UP_INTERP_MODE UP_INTERP_LINEAR
+#endif
+
+/** 插值需要的历史采样数(上一块末尾的几个采样，保证块与块之间连续；按三次插值的需求保存，线性只用最后一个) */
 #define UP_HISTORY_SAMPLES 3
 
 typedef struct upsample_t
