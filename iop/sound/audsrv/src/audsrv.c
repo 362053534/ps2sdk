@@ -467,6 +467,8 @@ static void play_thread(void *arg)
 		if (format_changed)
 		{
 			upsampler = find_upsampler(core1_freq, core1_bits, core1_channels);
+			/* 新格式从头开始，清掉上一首留下的历史采样 */
+			upsampler_reset(&up);
 			format_changed = 0;
 		}
 

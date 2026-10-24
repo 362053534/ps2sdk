@@ -333,7 +333,7 @@ static void cdda_procedure(void *arg)
 	}
 
 	/* audio discs are 44100hz, 16bit, stereo */
-	up44k1 = find_upsampler(44100, 16, 2);
+	up44k1 = find_cdda_upsampler();
 
 	cdda_pos = cdda_play_start;
 	printf("playing sectors %d - %d (%d sectors)\n", cdda_play_start, cdda_play_end, cdda_play_end - cdda_play_start);
