@@ -60,6 +60,11 @@ static int playing = 0;
 static char ringbuf[20480];
 /** size of ring buffer in bytes */
 static int ringbuf_size = sizeof(ringbuf);
+/** 低采样率16位音频(单声道和立体声)的环形缓冲最小字节数(约等于44.1kHz立体声的缓冲大小)，
+ *  保证上层(如OPL)每次送入的整块数据(4096字节)能装下 */
+#define LOW_RATE_MIN_RINGBUF_BYTES 18800
+/** 判定为低采样率的最高采样率(8000Hz和11025Hz，12000Hz不放大) */
+#define LOW_RATE_MAX_FREQ 11025
 /** reading head pointer */
 static int readpos;
 /** writing head pointer */
@@ -203,6 +208,20 @@ int audsrv_set_format(int freq, int bits, int channels)
 	/* set ring buffer size to 10 iterations worth of data (~50 ms) */
 	feed_size = ((512 * core1_freq) / 48000) << core1_sample_shift;
 	ringbuf_size = feed_size * 10;
+
+	/* 仅16位且采样率<=11025Hz(单声道/立体声均适用)：默认缓冲过小(8000Hz单声道仅1700字节)，
+	 * 向上取整到feed_size的整数倍，使缓冲不小于最小字节数，且不超过静态缓冲上限 */
+	if (core1_bits == 16 && core1_freq <= LOW_RATE_MAX_FREQ)
+	{
+		if (ringbuf_size < LOW_RATE_MIN_RINGBUF_BYTES)
+		{
+			ringbuf_size = ((LOW_RATE_MIN_RINGBUF_BYTES + feed_size - 1) / feed_size) * feed_size;
+		}
+		if (ringbuf_size > (int)sizeof(ringbuf))
+		{
+			ringbuf_size = sizeof(ringbuf);
+		}
+	}
 
 	writepos = 0;
 	readpos = (feed_size * 5) & ~3;

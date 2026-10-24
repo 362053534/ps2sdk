@@ -15,7 +15,6 @@
 #include <stdio.h>
 #include "upsamplers.h"
 
-#if 0
 /** lut for converting 8000 -> 48000 */
 static const short int up_8000_lut[512] =
 {
@@ -84,7 +83,6 @@ static const short int up_8000_lut[512] =
 	0x52, 0x52, 0x53, 0x53, 0x53, 0x53, 0x53, 0x53,
 	0x54, 0x54, 0x54, 0x54, 0x54, 0x54, 0x55, 0x55,
 };
-#endif
 
 /** lut for converting 11025 -> 48000 */
 static const short int up_11025_lut[512] =
@@ -488,10 +486,22 @@ static void up_generic_8_stereo(struct upsample_t *up, const short *lut)
 	}
 }
 
+static int up_8000_16_mono(struct upsample_t *up)
+{
+	up_generic_16_mono(up, up_8000_lut);
+	return 170; /* (8000 / 48000) * 512 * 16bit */
+}
+
+static int up_8000_16_stereo(struct upsample_t *up)
+{
+	up_generic_16_stereo(up, up_8000_lut);
+	return 340; /* (8000 / 48000) * 512 * stereo * 16bit */
+}
+
 static int up_11025_8_mono(struct upsample_t *up)
 {
 	up_generic_8_mono(up, up_11025_lut);
-	return 116; /* (11025 / 48000) * 512 */
+	return 117; /* (11025 / 48000) * 512，与转换表实际读取的采样点数一致 */
 }
 
 static int up_11025_8_stereo(struct upsample_t *up)
@@ -509,7 +519,7 @@ static int up_11025_16_mono(struct upsample_t *up)
 static int up_11025_16_stereo(struct upsample_t *up)
 {
 	up_generic_16_stereo(up, up_11025_lut);
-	return 470; /* (11025 / 48000) * 512 * stereo * 16bit */
+	return 468; /* (11025 / 48000) * 512 * stereo * 16bit，必须是4的倍数，否则左右声道错位 */
 }
 
 static int up_22050_8_mono(struct upsample_t *up)
@@ -533,7 +543,7 @@ static int up_22050_16_stereo(struct upsample_t *up)
 static int up_32000_8_mono(struct upsample_t *up)
 {
 	up_generic_8_mono(up, up_32000_lut);
-	return 340; /* (32000 / 48000) * 512 */
+	return 341; /* (32000 / 48000) * 512，与转换表实际读取的采样点数一致 */
 }
 
 static int up_32000_16_mono(struct upsample_t *up)
@@ -603,6 +613,8 @@ typedef struct entry_t
 /** supported upsamplers */
 static entry_t upsamplers[] =
 {
+	{8000,  16, 1, up_8000_16_mono},
+	{8000,  16, 2, up_8000_16_stereo},
 	{11025,  8, 1, up_11025_8_mono},
 	{11025,  8, 2, up_11025_8_stereo},
 	{11025, 16, 1, up_11025_16_mono},
