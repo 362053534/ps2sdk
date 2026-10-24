@@ -60,11 +60,13 @@ static int playing = 0;
 static char ringbuf[20480];
 /** size of ring buffer in bytes */
 static int ringbuf_size = sizeof(ringbuf);
-/** 环形缓冲的最小字节数(约等于44.1kHz立体声的缓冲大小)。
- *  低采样率下按"10倍读取量"算出的缓冲过小：上层(如OPL)每次要先等待4096字节的可写空间再写入，
- *  而初始读位置在缓冲中间，可写空间只有半个缓冲，因此缓冲至少要两倍于该块大小，否则会永远等不到空间而死锁 */
-#define MIN_RINGBUF_BYTES 18800
-/** 触发放大的阈值：按10倍读取量算出的缓冲小于它(即半个缓冲装不下4096字节的块)就放大到MIN_RINGBUF_BYTES */
+/** 低采样率下环形缓冲的放大倍数(以每次喂给声卡的数据量feed_size为单位)。
+ *  按"10倍读取量"算出的缓冲在低采样率下过小：上层(如OPL)每次先等待一块可写空间再写入，
+ *  而初始读位置在缓冲中间，可写空间只有半个缓冲，块一旦大于半个缓冲就会永远等不到空间而死锁。
+ *  放大到20倍后(约213毫秒)，上层若按2倍feed_size(约21毫秒)为块送数据，缓冲恰好是块的10倍，
+ *  而播放线程在剩余空间达到缓冲的十分之一时才唤醒等待者，两者正好对齐，单次等待约等于一个块的时长 */
+#define RINGBUF_LOW_RATE_FEED_COUNT 20
+/** 触发放大的阈值：按10倍读取量算出的缓冲小于它(即半个缓冲装不下4096字节的块)就放大 */
 #define RINGBUF_ENLARGE_THRESHOLD 8192
 /** reading head pointer */
 static int readpos;
@@ -206,15 +208,14 @@ int audsrv_set_format(int freq, int bits, int channels)
 	core1_bits = bits;
 	core1_channels = channels;
 
-	/* set ring buffer size to 10 iterations worth of data (~50 ms) */
+	/* set ring buffer size to 10 iterations worth of data (512个采样点/48000Hz≈10.7ms，共约107ms) */
 	feed_size = ((512 * core1_freq) / 48000) << core1_sample_shift;
 	ringbuf_size = feed_size * 10;
 
-	/* 缓冲过小的格式(如8000Hz单声道仅1700字节)：向上取整到feed_size的整数倍，
-	 * 使缓冲不小于最小字节数，且不超过静态缓冲上限 */
+	/* 缓冲过小的格式(如8000Hz单声道仅1700字节)：放大到20倍feed_size，且不超过静态缓冲上限 */
 	if (ringbuf_size < RINGBUF_ENLARGE_THRESHOLD)
 	{
-		ringbuf_size = ((MIN_RINGBUF_BYTES + feed_size - 1) / feed_size) * feed_size;
+		ringbuf_size = feed_size * RINGBUF_LOW_RATE_FEED_COUNT;
 		if (ringbuf_size > (int)sizeof(ringbuf))
 		{
 			ringbuf_size = sizeof(ringbuf);
