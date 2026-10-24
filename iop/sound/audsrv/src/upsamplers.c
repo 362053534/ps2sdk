@@ -126,30 +126,25 @@ static int up_44100_16_stereo_cd(struct upsample_t *up)
 	return 1880; /* (44100 / 48000) * 512 * stereo * 16bit */
 }
 
-/** 插值升采样(可选线性或三次，由 UP_INTERP_MODE 决定，见 upsamplers.h)
+/** 三次插值升采样
  *
- * 原来的升采样是"取最近点"(查表)，会产生明显的失真。这里改为对相邻输入采样做插值：
- * 线性插值每个输出点用2个输入采样，IOP开销小；三次(Catmull-Rom)插值用4个，音质更好但开销约为线性的两倍。
- * 权重只与输出点在块内的序号有关，每个采样率只需算一次表。
+ * 原来的升采样是"取最近点"(查表)，会产生明显的失真。这里改为三次(Catmull-Rom)插值：
+ * 每个输出点用相邻4个输入采样计算，权重只与输出点在块内的序号有关，每个采样率只需算一次表。
  *
  * 每块固定消耗 step 个输入帧、产生 512 个输出点(与原来一致，调用方的缓冲区逻辑不变)。
- * 插值需要当前点前面和后面的采样，所以输出整体延后若干个输入采样(线性1个，三次2个)，
- * 并在 upsample_t 里保存上一块末尾的 UP_HISTORY_SAMPLES 个采样，块与块之间连续，不会越过输入缓冲区读取。
- * 两种方式共用同一套工作缓冲和历史采样，历史采样按最大需求(三次)保存。
+ * 插值需要当前点前1个、后2个采样，所以输出整体延后 UP_CUBIC_DELAY 个输入采样，
+ * 并在 upsample_t 里保存上一块末尾的 UP_CUBIC_HISTORY 个采样，块与块之间连续，不会越过输入缓冲区读取。
  */
 #define UP_OUTPUT_COUNT   512 /* 每块输出的采样点数 */
-#define UP_CUBIC_HISTORY  UP_HISTORY_SAMPLES /* 工作缓冲里历史采样占的位置数，定义在头文件 */
+#define UP_CUBIC_HISTORY  UP_HISTORY_SAMPLES /* 插值窗口比当前块多需要的历史采样数，定义在头文件 */
+#define UP_CUBIC_DELAY    2   /* 输出相对输入的延后(输入采样数)，保证窗口最远只读到本块最后一个采样 */
 #define UP_POS_SHIFT      7   /* 位置的16.16定点小数每个输出点的步进 = step << 7 (65536 / 512 = 128) */
+#define UP_FRAC_BITS      15  /* 插值小数部分的位数 */
+#define UP_FRAC_ONE       (1 << UP_FRAC_BITS)
 #define UP_WEIGHT_BITS    14  /* 权重的定点位数(16位采样 x 权重 的和不会超过32位) */
 #define UP_STEP_MAX       512 /* 每块最多消耗的输入帧数，大于它的采样率不走插值 */
 
-#if UP_INTERP_MODE == UP_INTERP_CUBIC
-
-#define UP_INTERP_DELAY   2   /* 输出相对输入的延后(输入采样数)，保证窗口最远只读到本块最后一个采样 */
-#define UP_FRAC_BITS      15  /* 插值小数部分的位数 */
-#define UP_FRAC_ONE       (1 << UP_FRAC_BITS)
-
-typedef struct up_table_t
+typedef struct up_cubic_table_t
 {
 	/** 该表对应的每块消耗帧数，0表示尚未生成 */
 	int step;
@@ -157,31 +152,15 @@ typedef struct up_table_t
 	short base[UP_OUTPUT_COUNT];
 	/** 每个输出点的4个权重 */
 	short weight[UP_OUTPUT_COUNT][4];
-} up_table_t;
+} up_cubic_table_t;
 
-#else /* 线性插值 */
-
-#define UP_INTERP_DELAY   1   /* 输出相对输入的延后(输入采样数) */
-
-typedef struct up_table_t
-{
-	/** 该表对应的每块消耗帧数，0表示尚未生成 */
-	int step;
-	/** 每个输出点对应的窗口起点(相对 work 数组)，窗口为 base 和 base+1 两个采样 */
-	short base[UP_OUTPUT_COUNT];
-	/** 每个输出点的小数部分(UP_WEIGHT_BITS位定点)，即后一个采样的权重 */
-	short frac[UP_OUTPUT_COUNT];
-} up_table_t;
-
-#endif
-
-static up_table_t up_tab_8000;  /* 8000Hz   每块85帧  */
-static up_table_t up_tab_11025; /* 11025Hz  每块117帧 */
-static up_table_t up_tab_12000; /* 12000Hz  每块128帧 */
-static up_table_t up_tab_22050; /* 22050Hz  每块235帧 */
-static up_table_t up_tab_24000; /* 24000Hz  每块256帧 */
-static up_table_t up_tab_32000; /* 32000Hz  每块341帧 */
-static up_table_t up_tab_44100; /* 44100Hz  每块470帧 */
+static up_cubic_table_t up_tab_8000;  /* 8000Hz   每块85帧  */
+static up_cubic_table_t up_tab_11025; /* 11025Hz  每块117帧 */
+static up_cubic_table_t up_tab_12000; /* 12000Hz  每块128帧 */
+static up_cubic_table_t up_tab_22050; /* 22050Hz  每块235帧 */
+static up_cubic_table_t up_tab_24000; /* 24000Hz  每块256帧 */
+static up_cubic_table_t up_tab_32000; /* 32000Hz  每块341帧 */
+static up_cubic_table_t up_tab_44100; /* 44100Hz  每块470帧 */
 
 /** 插值用的工作缓冲：历史采样 + 本块全部输入帧，左右声道各一份 */
 static short up_work_left[UP_CUBIC_HISTORY + UP_STEP_MAX];
@@ -199,13 +178,11 @@ void upsampler_reset(struct upsample_t *up)
 	}
 }
 
-#if UP_INTERP_MODE == UP_INTERP_CUBIC
-
 /** 生成三次插值的位置表和权重表
  * @param t     要生成的表
  * @param step  每块消耗的输入帧数
  */
-static void up_table_build(up_table_t *t, int step)
+static void up_cubic_build(up_cubic_table_t *t, int step)
 {
 	int i;
 
@@ -214,7 +191,7 @@ static void up_table_build(up_table_t *t, int step)
 		int pos, j, f, f2, f3, w0, w1, w2, w3;
 
 		/* 输出点i在输入中的位置(16.16定点)，减去延后量 */
-		pos = ((i * step) << UP_POS_SHIFT) - (UP_INTERP_DELAY << 16);
+		pos = ((i * step) << UP_POS_SHIFT) - (UP_CUBIC_DELAY << 16);
 		j = pos >> 16;
 		f = (pos & 0xffff) >> (16 - UP_FRAC_BITS);
 		f2 = (f * f) >> UP_FRAC_BITS;
@@ -246,7 +223,7 @@ static void up_table_build(up_table_t *t, int step)
  * @param history  保存下一块需要的历史采样
  * @param out      输出缓冲(512个采样点)
  */
-static void up_render(const up_table_t *t, int step, const short *work, short *history, short *out)
+static void up_cubic_render(const up_cubic_table_t *t, int step, const short *work, short *history, short *out)
 {
 	int i;
 
@@ -278,69 +255,13 @@ static void up_render(const up_table_t *t, int step, const short *work, short *h
 	}
 }
 
-#else /* 线性插值 */
-
-/** 生成线性插值的位置表和小数表
- * @param t     要生成的表
- * @param step  每块消耗的输入帧数
- */
-static void up_table_build(up_table_t *t, int step)
-{
-	int i;
-
-	for (i = 0; i < UP_OUTPUT_COUNT; i++)
-	{
-		int pos, j;
-
-		/* 输出点i在输入中的位置(16.16定点)，减去延后量 */
-		pos = ((i * step) << UP_POS_SHIFT) - (UP_INTERP_DELAY << 16);
-		j = pos >> 16;
-
-		/* 窗口起点：j，再加上工作缓冲里历史采样占的位置 */
-		t->base[i] = (short)(j + UP_CUBIC_HISTORY);
-
-		/* 小数部分从16位降到 UP_WEIGHT_BITS 位 */
-		t->frac[i] = (short)((pos & 0xffff) >> (16 - UP_WEIGHT_BITS));
-	}
-
-	t->step = step;
-}
-
-/** 对一个声道做线性插值，输出512个采样点，并保存历史采样
- * @param t        位置和小数表
- * @param step     每块消耗的输入帧数
- * @param work     工作缓冲(前 UP_CUBIC_HISTORY 个是历史采样，后面是本块输入)
- * @param history  保存下一块需要的历史采样
- * @param out      输出缓冲(512个采样点)
- */
-static void up_render(const up_table_t *t, int step, const short *work, short *history, short *out)
-{
-	int i;
-
-	for (i = 0; i < UP_OUTPUT_COUNT; i++)
-	{
-		const short *p = work + t->base[i];
-
-		/* 前一个采样 + (后一个 - 前一个) x 小数；差值最大65535，乘14位小数不会溢出32位。
-		 * 结果一定在两个采样之间，不需要限幅 */
-		out[i] = (short)(p[0] + (((p[1] - p[0]) * t->frac[i] + (1 << (UP_WEIGHT_BITS - 1))) >> UP_WEIGHT_BITS));
-	}
-
-	for (i = 0; i < UP_CUBIC_HISTORY; i++)
-	{
-		history[i] = work[step + i];
-	}
-}
-
-#endif
-
 /** 把8位采样转成16位，与原来的转换方式一致 */
 static short up_convert_8(signed char b)
 {
 	return (short)((b + b * 256) - 32768);
 }
 
-/** 通用插值升采样(线性或三次，由 UP_INTERP_MODE 决定)
+/** 通用三次插值升采样
  * @param up        升采样器状态
  * @param t         该采样率的表
  * @param step      每块消耗的输入帧数
@@ -348,13 +269,13 @@ static short up_convert_8(signed char b)
  * @param channels  输入声道数(1或2)
  * @returns 本块消耗的输入字节数
  */
-static int up_interp(struct upsample_t *up, up_table_t *t, int step, int bits, int channels)
+static int up_cubic(struct upsample_t *up, up_cubic_table_t *t, int step, int bits, int channels)
 {
 	int i, k;
 
 	if (t->step != step)
 	{
-		up_table_build(t, step);
+		up_cubic_build(t, step);
 	}
 
 	for (i = 0; i < UP_CUBIC_HISTORY; i++)
@@ -400,10 +321,10 @@ static int up_interp(struct upsample_t *up, up_table_t *t, int step, int bits, i
 		}
 	}
 
-	up_render(t, step, up_work_left, up->history_left, up->left);
+	up_cubic_render(t, step, up_work_left, up->history_left, up->left);
 	if (channels == 2)
 	{
-		up_render(t, step, up_work_right, up->history_right, up->right);
+		up_cubic_render(t, step, up_work_right, up->history_right, up->right);
 	}
 	else
 	{
@@ -419,87 +340,87 @@ static int up_interp(struct upsample_t *up, up_table_t *t, int step, int bits, i
 
 static int up_8000_16_mono(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_8000, 85, 16, 1); /* (8000 / 48000) * 512 = 85帧，共170字节 */
+	return up_cubic(up, &up_tab_8000, 85, 16, 1); /* (8000 / 48000) * 512 = 85帧，共170字节 */
 }
 
 static int up_8000_16_stereo(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_8000, 85, 16, 2); /* 340字节 */
+	return up_cubic(up, &up_tab_8000, 85, 16, 2); /* 340字节 */
 }
 
 static int up_11025_8_mono(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_11025, 117, 8, 1); /* (11025 / 48000) * 512 = 117帧 */
+	return up_cubic(up, &up_tab_11025, 117, 8, 1); /* (11025 / 48000) * 512 = 117帧 */
 }
 
 static int up_11025_8_stereo(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_11025, 117, 8, 2); /* 234字节 */
+	return up_cubic(up, &up_tab_11025, 117, 8, 2); /* 234字节 */
 }
 
 static int up_11025_16_mono(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_11025, 117, 16, 1); /* 234字节 */
+	return up_cubic(up, &up_tab_11025, 117, 16, 1); /* 234字节 */
 }
 
 static int up_11025_16_stereo(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_11025, 117, 16, 2); /* 468字节，必须是4的倍数，否则左右声道错位 */
+	return up_cubic(up, &up_tab_11025, 117, 16, 2); /* 468字节，必须是4的倍数，否则左右声道错位 */
 }
 
 static int up_12000_16_stereo(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_12000, 128, 16, 2); /* 512字节 */
+	return up_cubic(up, &up_tab_12000, 128, 16, 2); /* 512字节 */
 }
 
 static int up_22050_8_mono(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_22050, 235, 8, 1); /* (22050 / 48000) * 512 = 235帧 */
+	return up_cubic(up, &up_tab_22050, 235, 8, 1); /* (22050 / 48000) * 512 = 235帧 */
 }
 
 static int up_22050_16_mono(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_22050, 235, 16, 1); /* 470字节 */
+	return up_cubic(up, &up_tab_22050, 235, 16, 1); /* 470字节 */
 }
 
 static int up_22050_16_stereo(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_22050, 235, 16, 2); /* 940字节 */
+	return up_cubic(up, &up_tab_22050, 235, 16, 2); /* 940字节 */
 }
 
 static int up_24000_16_stereo(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_24000, 256, 16, 2); /* 1024字节 */
+	return up_cubic(up, &up_tab_24000, 256, 16, 2); /* 1024字节 */
 }
 
 static int up_32000_8_mono(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_32000, 341, 8, 1); /* (32000 / 48000) * 512 = 341帧 */
+	return up_cubic(up, &up_tab_32000, 341, 8, 1); /* (32000 / 48000) * 512 = 341帧 */
 }
 
 static int up_32000_16_mono(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_32000, 341, 16, 1); /* 682字节 */
+	return up_cubic(up, &up_tab_32000, 341, 16, 1); /* 682字节 */
 }
 
 static int up_32000_16_stereo(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_32000, 341, 16, 2); /* 1364字节 */
+	return up_cubic(up, &up_tab_32000, 341, 16, 2); /* 1364字节 */
 }
 
 static int up_44100_8_mono(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_44100, 470, 8, 1); /* (44100 / 48000) * 512 = 470帧 */
+	return up_cubic(up, &up_tab_44100, 470, 8, 1); /* (44100 / 48000) * 512 = 470帧 */
 }
 
 static int up_44100_16_mono(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_44100, 470, 16, 1); /* 940字节 */
+	return up_cubic(up, &up_tab_44100, 470, 16, 1); /* 940字节 */
 }
 
 static int up_44100_16_stereo(struct upsample_t *up)
 {
-	return up_interp(up, &up_tab_44100, 470, 16, 2); /* 1880字节 */
+	return up_cubic(up, &up_tab_44100, 470, 16, 2); /* 1880字节 */
 }
 
 static int up_48000_16_mono(struct upsample_t *up)
