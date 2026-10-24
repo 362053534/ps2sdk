@@ -222,6 +222,9 @@ int audsrv_set_format(int freq, int bits, int channels)
 		}
 	}
 
+	/* 清空环形缓冲：读位置初始在缓冲中间，播放线程会先读完这半个环，不清空就会先播出上一次残留的旧音频，接缝处产生爆音 */
+	memset(ringbuf, 0, sizeof(ringbuf));
+
 	writepos = 0;
 	/* 初始读位置取缓冲的一半(未放大时恰好是5倍读取量，与原来一致)，保证初始可写空间约半个缓冲 */
 	readpos = (ringbuf_size / 2) & ~3;
