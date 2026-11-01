@@ -271,7 +271,10 @@ static ata_cmd_state_t atad_cmd_state;
 #ifdef ATA_ENABLE_BDM
 #define NUM_DEVICES        2
 #define ATA_BD_SECTOR_SIZE 512
+/* 一次搬多少扇区。只用于目标地址不是 4 字节对齐的慢路径，对齐的读不经过这里。 */
+#define ATA_BD_BOUNCE_SECTORS 16
 static struct block_device g_ata_bd[NUM_DEVICES];
+static u8 ata_bd_bounce[ATA_BD_BOUNCE_SECTORS * ATA_BD_SECTOR_SIZE] __attribute__((aligned(16)));
 #endif
 
 #ifdef ATA_USE_DEV9
@@ -1833,8 +1836,54 @@ static void ata_shutdown_cb(void)
 //
 // Block device interface
 //
+
+/*
+ * FatFs 在文件偏移不落在扇区边界时，头尾不足一扇区的部分用 CPU 拷贝，
+ * 中间的整扇区直接交给磁盘驱动，目的地址是 buffer 加上这个余数。
+ * 图包索引从 zip 偏移 69 开始读，余数是 443，443 除以 4 余 3。
+ * DEV9 用 IOP DMA，地址低 2 位会被丢掉，中间整段因此错 3 字节。
+ * 32 字节的索引头，以及游戏表最后 4 字节的哨兵，都落在 CPU 拷贝里，
+ * 所以魔数、文件大小、哨兵都能对上，二分查找却找不到游戏。
+ * USB 的 OHCI 允许任意字节起始地址，批量输入管道也没有对齐检查，同一条 FatFs 路径读出来是对的。
+ * 目标已经按 4 字节对齐时仍直接 DMA，不走这块缓冲区。
+ */
+static int ata_bd_rw_unaligned(struct block_device *bd, u64 sector, void *buffer, u16 count, int dir)
+{
+    unsigned int ss = bd->sectorSize;
+    u8 *p = (u8 *)buffer;
+    u16 left = count;
+
+    if (ss == 0 || (ss % ATA_BD_SECTOR_SIZE) != 0 || ss > sizeof(ata_bd_bounce))
+        return -EIO;
+
+    while (left > 0) {
+        u16 n = left;
+        unsigned int maxn = sizeof(ata_bd_bounce) / ss;
+
+        if ((unsigned int)n > maxn)
+            n = (u16)maxn;
+        if (dir == ATA_DIR_READ) {
+            if (ata_bd_io_common_2(bd, sector, ata_bd_bounce, n, ATA_DIR_READ) != 0)
+                return -EIO;
+            memcpy(p, ata_bd_bounce, (unsigned int)n * ss);
+        } else {
+            memcpy(ata_bd_bounce, p, (unsigned int)n * ss);
+            if (ata_bd_io_common_2(bd, sector, ata_bd_bounce, n, ATA_DIR_WRITE) != 0)
+                return -EIO;
+        }
+        p += (unsigned int)n * ss;
+        sector += n;
+        left = (u16)(left - n);
+    }
+
+    return count;
+}
+
 static int ata_bd_read(struct block_device *bd, u64 sector, void *buffer, u16 count)
 {
+    if (((u32)buffer & 3) != 0)
+        return ata_bd_rw_unaligned(bd, sector, buffer, count, ATA_DIR_READ);
+
     if (ata_bd_io_common_2(bd, sector, buffer, count, ATA_DIR_READ) != 0) {
         return -EIO;
     }
@@ -1844,6 +1893,9 @@ static int ata_bd_read(struct block_device *bd, u64 sector, void *buffer, u16 co
 
 static int ata_bd_write(struct block_device *bd, u64 sector, const void *buffer, u16 count)
 {
+    if (((u32)buffer & 3) != 0)
+        return ata_bd_rw_unaligned(bd, sector, (void *)buffer, count, ATA_DIR_WRITE);
+
     if (ata_bd_io_common_2(bd, sector, (void *)buffer, count, ATA_DIR_WRITE) != 0) {
         return -EIO;
     }
