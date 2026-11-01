@@ -773,9 +773,6 @@ int sceAtaExecCmd(void *buf, u32 blkcount, u16 feature, u16 nsector, u16 sector,
         ata_hwport->r_sector  = (sector >> 8) & 0xff;
         ata_hwport->r_lcyl    = (lcyl >> 8) & 0xff;
         ata_hwport->r_hcyl    = (hcyl >> 8) & 0xff;
-        /* 背靠背写时适配器只留下第二次的低 24 位，8GiB 以后的 LBA 24–31 位会丢。
-           读一次备用状态口就能把第一次写刷进锁存。选盘读两次是在等新设备，这里设备没变。 */
-        (void)ata_hwport->r_control;
     }
 
     ata_hwport->r_feature = feature & 0xff;
