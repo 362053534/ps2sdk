@@ -1,6 +1,7 @@
 #include <bdm.h>
 #include <errno.h>
 #include <stdint.h>
+#include <sysclib.h>
 #include <thevent.h>
 #include <thbase.h>
 
@@ -42,12 +43,15 @@
 #define CMD_WAIT_RESP_TIMEOUT (100U)
 #define WAIT_IDLE_TIMEOUT     (50U)
 #define MAX_RETRIES            4
+/* 一次搬多少扇区。只用于目标地址不是 4 字节对齐的慢路径。 */
+#define SPISD_BOUNCE_SECTORS 16
 
 #define CMD_CRC_OFFSET        5
 #define CRC7_SHIFT_MASK(crc7) ((crc7) << 1U | 1U)
 
 /* globals */
 spisd_t sdcard;
+static uint8_t spisd_bounce[SPISD_BOUNCE_SECTORS * SECTOR_SIZE] __attribute__((aligned(16)));
 
 /* BDM interface */
 struct block_device bd = {
@@ -659,6 +663,17 @@ static int spisd_write_multi_end()
  * BDM interface:
  * - BDM -> "spisd" library
  */
+/*
+ * FatFs 在文件偏移不落在扇区边界时，头尾不足一扇区的部分用 CPU 拷贝，
+ * 中间的整扇区直接交给这里，目的地址是 buffer 加上这个余数。
+ * 图包索引从 zip 偏移 69 开始读，余数是 443，443 除以 4 余 3。
+ * SIO2 按 32 位 DMA 进这块地址，随后 reverse_buffer 用 lw/sw 翻转每个字。
+ * R3000 对不对齐的 lw/sw 会地址异常，IOP 直接死机。
+ * 同一条路径在 DEV9 上只是丢掉地址低 2 位，所以硬盘只是读错、找不到图。
+ * 目标已经按 4 字节对齐时仍直接 DMA，不走这块缓冲区。
+ */
+static int spisd_rw_unaligned(struct block_device *bd, uint64_t sector, void *buffer, uint16_t count, int write);
+
 int spisd_read(struct block_device *bd, uint64_t sector, void *buffer, uint16_t count)
 {
     uint16_t sectors_left = count;
@@ -670,6 +685,9 @@ int spisd_read(struct block_device *bd, uint64_t sector, void *buffer, uint16_t 
 
     if (count == 0)
         return 0;
+
+    if (((uint32_t)buffer & 3) != 0)
+        return spisd_rw_unaligned(bd, sector, buffer, count, 0);
 
     M_DEBUG("%s: sector %i, count: %i \n", __FUNCTION__, (u32)sector, count);
 
@@ -754,6 +772,9 @@ int spisd_write(struct block_device *bd, uint64_t sector, const void *buffer, ui
     if (count == 0)
         return 0;
 
+    if (((uint32_t)buffer & 3) != 0)
+        return spisd_rw_unaligned(bd, sector, (void *)buffer, count, 1);
+
     M_DEBUG("%s: sector %i, count: %i \n", __FUNCTION__, (u32)sector, count);
 
     /* recast */
@@ -821,6 +842,43 @@ int spisd_write(struct block_device *bd, uint64_t sector, const void *buffer, ui
     reverse_buffer((uint32_t *)buffer, ((count * SECTOR_SIZE) / 4));
 
     return sectors_left == 0 && !request_failed ? count : -EIO;
+}
+
+static int spisd_rw_unaligned(struct block_device *bd, uint64_t sector, void *buffer, uint16_t count, int write)
+{
+    unsigned int ss = bd->sectorSize;
+    uint8_t *p = (uint8_t *)buffer;
+    uint16_t left = count;
+
+    if (ss != SECTOR_SIZE || ss > sizeof(spisd_bounce))
+        return -EIO;
+
+    while (left > 0) {
+        uint16_t n = left;
+        unsigned int maxn = sizeof(spisd_bounce) / ss;
+        int got;
+
+        if ((unsigned int)n > maxn)
+            n = (uint16_t)maxn;
+
+        if (!write) {
+            got = spisd_read(bd, sector, spisd_bounce, n);
+            if (got != n)
+                return -EIO;
+            memcpy(p, spisd_bounce, (unsigned int)n * ss);
+        } else {
+            memcpy(spisd_bounce, p, (unsigned int)n * ss);
+            got = spisd_write(bd, sector, spisd_bounce, n);
+            if (got != n)
+                return -EIO;
+        }
+
+        p += (unsigned int)n * ss;
+        sector += n;
+        left = (uint16_t)(left - n);
+    }
+
+    return count;
 }
 
 void spisd_flush(struct block_device *bd)

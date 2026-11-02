@@ -35,6 +35,7 @@ stdio_IMPORTS_end
 
 sysclib_IMPORTS_start
 I_strcmp
+I_memcpy
 stdio_IMPORTS_end
 
 thbase_IMPORTS_start
