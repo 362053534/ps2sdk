@@ -258,9 +258,9 @@ static DWORD fastseek_tables[FASTSEEK_TBL_COUNT][FASTSEEK_TBL_DWORDS];
 static FIL *fastseek_owner[FASTSEEK_TBL_COUNT];                        // 每张表的占用者，NULL 表示空闲
 
 // 图包路径匹配规则：必须与 OPL src/artpack.c 的图包命名保持同步
-// (ART_PACK_DIR_NAME / ART_PACK_NAME_KEY / ART_PACK_ZIP_EXT)，OPL 改名时这里也要改
+// (ART_PACK_DIR_NAME / ART_PACK_ZIP_EXT / ART_PACK_HIDDEN_PREFIX)，OPL 改规则时这里也要改
 #define FASTSEEK_ART_DIR_NAME "ART2"     // 图包所在目录名(须是文件的直接父目录)
-#define FASTSEEK_ART_NAME_KEY "OPLM_ART" // 图包文件名须包含的关键字
+#define FASTSEEK_ART_HIDDEN  "."        // 隐藏文件前缀须排除(含 macOS 的 "._" 假 zip)
 #define FASTSEEK_ART_ZIP_EXT  ".zip"     // 图包扩展名
 #define FASTSEEK_PATH_SEP     '/'        // 路径分隔符
 
@@ -283,11 +283,11 @@ static int fs_fastseek_ieq(const char *a, const char *b, int n)
     return 1;
 }
 
-// 判断路径是否为 OPL 图包：.../ART2/<含 OPLM_ART 的主名>.zip，均不区分大小写
+// 判断路径是否为 OPL 图包：.../ART2/<非 . 开头的主名>.zip，目录与扩展名不区分大小写
 static int fs_fastseek_is_art_pack(const char *name)
 {
     const char *base, *dir;
-    int baseLen, dirLen, keyLen, extLen, i;
+    int baseLen, dirLen, extLen;
 
     base = strrchr(name, FASTSEEK_PATH_SEP);
     if (base == NULL) {
@@ -301,22 +301,18 @@ static int fs_fastseek_is_art_pack(const char *name)
     dirLen = (int)(base - dir);
     base++;
     baseLen = (int)strlen(base);
-    keyLen  = (int)strlen(FASTSEEK_ART_NAME_KEY);
     extLen  = (int)strlen(FASTSEEK_ART_ZIP_EXT);
 
     if (dirLen != (int)strlen(FASTSEEK_ART_DIR_NAME) || !fs_fastseek_ieq(dir, FASTSEEK_ART_DIR_NAME, dirLen)) {
         return 0;
     }
-    if (baseLen < extLen + keyLen || !fs_fastseek_ieq(base + baseLen - extLen, FASTSEEK_ART_ZIP_EXT, extLen)) {
+    if (baseLen <= extLen || !fs_fastseek_ieq(base + baseLen - extLen, FASTSEEK_ART_ZIP_EXT, extLen)) {
         return 0;
     }
-    // 关键字须出现在主名(去掉扩展名)中
-    for (i = 0; i + keyLen <= baseLen - extLen; i++) {
-        if (fs_fastseek_ieq(base + i, FASTSEEK_ART_NAME_KEY, keyLen)) {
-            return 1;
-        }
+    if (!strncmp(base, FASTSEEK_ART_HIDDEN, strlen(FASTSEEK_ART_HIDDEN))) {
+        return 0;
     }
-    return 0;
+    return 1;
 }
 
 // 释放文件占用的映射表并关闭其快速定位模式
