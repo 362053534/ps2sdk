@@ -1454,11 +1454,14 @@ static void ata_device_probe(ata_devinfo_t *devinfo)
 }
 
 #ifdef ATA_ENABLE_BDM
-/* APA 分区头 magic 在 LBA0 偏移 4，值为 'APA\0'。FAT/exFAT 挂不上这种盘。 */
+/* 与 EE 的 hddSectorIsApa、ps2hdd 的 apaReadHeader 一致。FAT/exFAT 没有这组标记。 */
 #define ATA_APA_MAGIC0 'A'
 #define ATA_APA_MAGIC1 'P'
 #define ATA_APA_MAGIC2 'A'
 #define ATA_APA_MAGIC3 '\0'
+#define ATA_APA_SONY_MARK "Sony Computer Entertainment Inc."
+#define ATA_APA_SONY_MARK_LEN 32
+typedef char ata_apa_sony_mark_len_check[(sizeof(ATA_APA_SONY_MARK) - 1) == ATA_APA_SONY_MARK_LEN ? 1 : -1];
 
 static int ata_bd_device_is_apa(int device)
 {
@@ -1469,14 +1472,12 @@ static int ata_bd_device_is_apa(int device)
     if (sceAtaDmaTransfer(device, sector, 0, 1, ATA_DIR_READ) != 0)
         return 0;
 
-    /* 有 55AA 的是 MBR/GPT，即便引导区碰巧出现 APA 也不 skip。真 APA 碰巧带 55AA 时交给 EE 拦。 */
-    if (sector[0x1FE] == 0x55 && sector[0x1FF] == 0xAA)
-        return 0;
-
+    /* 55 AA 不能单独放行或拦截：带保护性 MBR 的 APA 头也有它，exFAT 引导区也有它。 */
     return sector[4] == ATA_APA_MAGIC0 &&
            sector[5] == ATA_APA_MAGIC1 &&
            sector[6] == ATA_APA_MAGIC2 &&
-           sector[7] == ATA_APA_MAGIC3;
+           sector[7] == ATA_APA_MAGIC3 &&
+           memcmp(sector + 0x100, ATA_APA_SONY_MARK, ATA_APA_SONY_MARK_LEN) == 0;
 }
 #endif
 
