@@ -1463,6 +1463,19 @@ static void ata_device_probe(ata_devinfo_t *devinfo)
 #define ATA_APA_SONY_MARK_LEN 32
 typedef char ata_apa_sony_mark_len_check[(sizeof(ATA_APA_SONY_MARK) - 1) == ATA_APA_SONY_MARK_LEN ? 1 : -1];
 
+/* ata_bd 以 -nostdlib 链接，imports.lst 没有 I_memcmp，不能发出 memcmp 调用。 */
+static int ata_apa_sony_mark_eq(const u8 *p)
+{
+    const u8 *mark = (const u8 *)ATA_APA_SONY_MARK;
+    int i;
+
+    for (i = 0; i < ATA_APA_SONY_MARK_LEN; i++) {
+        if (p[i] != mark[i])
+            return 0;
+    }
+    return 1;
+}
+
 static int ata_bd_device_is_apa(int device)
 {
     u8 *sector = (u8 *)ata_param;
@@ -1477,7 +1490,7 @@ static int ata_bd_device_is_apa(int device)
            sector[5] == ATA_APA_MAGIC1 &&
            sector[6] == ATA_APA_MAGIC2 &&
            sector[7] == ATA_APA_MAGIC3 &&
-           memcmp(sector + 0x100, ATA_APA_SONY_MARK, ATA_APA_SONY_MARK_LEN) == 0;
+           ata_apa_sony_mark_eq(sector + 0x100);
 }
 #endif
 
